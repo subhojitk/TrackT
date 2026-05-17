@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getRouteIdsForLine } from "@/lib/lines";
 
 const MBTA_BASE = "https://api-v3.mbta.com";
-const GL_ROUTES = ["Green-B", "Green-C", "Green-D", "Green-E"];
 const API_KEY = process.env.MBTA_API_KEY ?? "";
 
 export const runtime = "nodejs";
@@ -29,11 +29,13 @@ function decodePolyline(encoded: string): [number, number][] {
   return points;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const lineId = req.nextUrl.searchParams.get("route") ?? "Green";
+  const routeIds = getRouteIdsForLine(lineId);
   const headers: HeadersInit = API_KEY ? { "x-api-key": API_KEY } : {};
   const result: Record<string, [number, number][]> = {};
 
-  await Promise.all(GL_ROUTES.map(async route => {
+  await Promise.all(routeIds.map(async route => {
     const params = new URLSearchParams({
       "filter[route]": route,
       "fields[shape]": "polyline",

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 interface Props {
   currentStopId?: string;
   fillContainer?: boolean;
+  lineId?: string;
 }
 
 const StopMap = dynamic(() => import("./StopMap"), {

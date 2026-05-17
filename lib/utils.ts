@@ -18,22 +18,35 @@ export function delayLabel(delay: number | null): { text: string; cls: string } 
 
 export function branchColor(branch: string): string {
   const map: Record<string, string> = {
-    B: "bg-green-700",
-    C: "bg-green-700",
-    D: "bg-green-700",
-    E: "bg-green-700",
+    B: "bg-green-700", C: "bg-green-700", D: "bg-green-700", E: "bg-green-700",
   };
   return map[branch] ?? "bg-green-700";
 }
 
 export function branchBadgeColor(branch: string): string {
   const map: Record<string, string> = {
-    B: "bg-green-600 text-white",
-    C: "bg-green-500 text-white",
-    D: "bg-teal-500 text-white",
-    E: "bg-emerald-600 text-white",
+    B: "bg-green-600 text-white", C: "bg-green-500 text-white",
+    D: "bg-teal-500 text-white",  E: "bg-emerald-600 text-white",
   };
   return map[branch] ?? "bg-green-600 text-white";
+}
+
+export function routeColor(lineId: string): string {
+  // Lazy import to avoid circular deps — lines.ts imports nothing from utils
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getLine } = require("./lines") as typeof import("./lines");
+  return getLine(lineId)?.color ?? "#71717a";
+}
+
+export function routeBadgeStyle(lineOrBranch: string): { bg: string; text: string } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getLine } = require("./lines") as typeof import("./lines");
+  // Try direct match first (e.g., "Red", "Green-B"), then GL branch letter shorthand
+  const line = getLine(lineOrBranch) ?? getLine(`Green-${lineOrBranch}`);
+  return {
+    bg:   line?.color    ?? "#27272a",
+    text: line?.textColor === "black" ? "#000000" : "#ffffff",
+  };
 }
 
 export function countdown(mins: number | null): string {

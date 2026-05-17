@@ -7,9 +7,9 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function usePredictions(stopId: string, refreshInterval = 30_000) {
+export function usePredictions(stopId: string, lineId = "Green", refreshInterval = 30_000) {
   const { data, error, isLoading, mutate } = useSWR<Prediction[]>(
-    stopId ? `/api/mbta/predictions?stop=${stopId}` : null,
+    stopId ? `/api/mbta/predictions?stop=${stopId}&route=${lineId}` : null,
     fetcher,
     {
       refreshInterval,

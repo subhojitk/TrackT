@@ -1,7 +1,7 @@
 "use client";
 
 import type { Prediction } from "@/types/mbta";
-import { formatTime, minutesUntil, delayLabel, branchBadgeColor } from "@/lib/utils";
+import { formatTime, minutesUntil, delayLabel, routeBadgeStyle } from "@/lib/utils";
 
 interface Props {
   predictions: Prediction[];
@@ -48,7 +48,10 @@ export default function DirectionPanel({ predictions, isLoading, direction, labe
               key={p.id}
               className={`grid grid-cols-[1.25rem_1fr_2.5rem_3.5rem_3rem] gap-x-2 px-3 py-2 text-xs ${i === 0 ? "bg-zinc-800/30" : ""} ${isCancelled ? "opacity-40" : ""}`}
             >
-              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-sm text-[10px] font-bold ${branchBadgeColor(p.branch)}`}>
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-sm text-[10px] font-bold"
+                style={{ backgroundColor: routeBadgeStyle(p.branch).bg, color: routeBadgeStyle(p.branch).text }}
+              >
                 {p.branch}
               </span>
               <span className="truncate text-zinc-200 font-medium">{p.headsign}</span>

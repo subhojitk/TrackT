@@ -19,8 +19,8 @@ const SEVERITY_CLS: Record<number, string> = {
   3: "text-red-400",
 };
 
-export default function AlertsPanel({ stopId }: { stopId: string }) {
-  const { alerts } = useAlerts(stopId);
+export default function AlertsPanel({ stopId, lineId = "Green" }: { stopId: string; lineId?: string }) {
+  const { alerts } = useAlerts(stopId, lineId);
 
   return (
     <div className="flex flex-col h-full border-r border-zinc-800 min-w-0" style={{ flex: "0 0 40%" }}>

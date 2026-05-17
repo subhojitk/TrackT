@@ -5,9 +5,9 @@ import StopMap from "./StopMapDynamic";
 import DirectionPanel from "./DirectionPanel";
 import AlertsPanel from "./AlertsPanel";
 import LiveFeed from "./LiveFeed";
-import StopSelector from "./StopSelector";
 import EventsPanel from "./EventsPanel";
 import { usePredictions } from "@/hooks/usePredictions";
+import { getLine } from "@/lib/lines";
 
 function Clock() {
   const [time, setTime] = useState("");
@@ -33,10 +33,12 @@ function StatusDot({ isLoading, isError }: { isLoading: boolean; isError: boolea
 interface Props {
   stopId: string;
   stopName: string;
+  lineId?: string;
 }
 
-export default function DashboardLayout({ stopId, stopName }: Props) {
-  const { predictions, isLoading, isError } = usePredictions(stopId);
+export default function DashboardLayout({ stopId, stopName, lineId = "Green" }: Props) {
+  const line = getLine(lineId);
+  const { predictions, isLoading, isError } = usePredictions(stopId, lineId);
 
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
       {/* ── Header ── */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 shrink-0 gap-4">
         <div className="flex items-center gap-3">
-          <a href="/" className="text-green-400 font-bold tracking-[0.2em] text-sm hover:text-green-300 transition-colors">
+          <a href="/" className="font-bold tracking-[0.2em] text-sm hover:opacity-80 transition-opacity" style={{ color: line?.color ?? "#4ade80" }}>
             TRACKT
           </a>
           <span className="text-zinc-700">|</span>
@@ -62,11 +64,13 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
         </div>
 
         <div className="flex-1 max-w-xs">
-          <StopSelector currentStopId={stopId} />
+          <a href={`/?mode=${line?.mode ?? "subway"}&line=${lineId}`} className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors tracking-wide">
+            ← {line?.name ?? "Green Line"}
+          </a>
         </div>
 
         <div className="flex items-center gap-4 text-xs text-zinc-500">
-          <span className="tracking-widest hidden sm:block">MBTA GREEN LINE</span>
+          <span className="tracking-widest hidden sm:block">{line ? `${line.name.toUpperCase()} · MBTA` : "MBTA GREEN LINE"}</span>
           <Clock />
         </div>
       </header>
@@ -81,7 +85,7 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
               <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-400">NETWORK MAP</span>
             </div>
             <div className="flex-1 relative">
-              <StopMap currentStopId={stopId} fillContainer />
+              <StopMap currentStopId={stopId} lineId={lineId} fillContainer />
             </div>
           </div>
         )}
@@ -92,7 +96,9 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
           {/* Stop name bar */}
           <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/40 shrink-0">
             <span className="text-sm font-bold tracking-wide text-zinc-100">{stopName.toUpperCase()}</span>
-            <span className="ml-3 text-[10px] text-zinc-600 tracking-widest">GREEN LINE · MBTA</span>
+            <span className="ml-3 text-[10px] text-zinc-600 tracking-widest" style={{ color: line?.color ? `${line.color}99` : undefined }}>
+              {line ? `${line.name.toUpperCase()} · MBTA` : "GREEN LINE · MBTA"}
+            </span>
           </div>
 
           {/* Inbound / Outbound */}
@@ -104,7 +110,7 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
           {/* Events + Alerts + Live Feed */}
           <div className="flex shrink-0 overflow-hidden" style={{ height: "220px" }}>
             <EventsPanel stopId={stopId} />
-            <AlertsPanel stopId={stopId} />
+            <AlertsPanel stopId={stopId} lineId={lineId} />
             <LiveFeed predictions={predictions} />
           </div>
 

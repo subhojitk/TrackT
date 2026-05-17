@@ -50,7 +50,7 @@ function formatEventTime(iso: string) {
 }
 
 function EventCard({ event, activeStopId }: { event: TransitEvent; activeStopId?: string }) {
-  const isActive = activeStopId ? event.affectedStops.includes(activeStopId) : false;
+  const isActive = activeStopId ? event.affectedStops.some(s => s.stopId === activeStopId) : false;
   const { dayLabel, time } = formatEventTime(event.startTime);
   const bar = CROWD_BAR[event.crowdLevel];
 
@@ -80,21 +80,22 @@ function EventCard({ event, activeStopId }: { event: TransitEvent; activeStopId?
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[9px] tracking-widest text-zinc-600">EXPECT CROWDS AT</span>
-        {event.affectedStops.map(id => {
-          const stop = getStop(id);
-          return stop ? (
+        {event.affectedStops.map(({ stopId, lineId }) => {
+          const stop = getStop(stopId);
+          const label = stop?.name ?? stopId;
+          return (
             <a
-              key={id}
-              href={`/stop/${id}`}
+              key={stopId}
+              href={`/stop/${lineId}/${stopId}`}
               className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-                id === activeStopId
+                stopId === activeStopId
                   ? "bg-orange-500/30 text-orange-300 ring-1 ring-orange-500/50"
                   : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
               }`}
             >
-              {stop.name}
+              {label}
             </a>
-          ) : null;
+          );
         })}
         <div className="flex gap-0.5 ml-auto">
           {[1,2,3,4,5].map(n => (
@@ -113,8 +114,8 @@ export default function EventsPanel({ stopId }: { stopId?: string }) {
   const { events, isLoading } = useEvents();
   const sorted = stopId
     ? [...events].sort((a, b) => {
-        const aHit = a.affectedStops.includes(stopId) ? -1 : 1;
-        const bHit = b.affectedStops.includes(stopId) ? -1 : 1;
+        const aHit = a.affectedStops.some(s => s.stopId === stopId) ? -1 : 1;
+        const bHit = b.affectedStops.some(s => s.stopId === stopId) ? -1 : 1;
         return aHit - bHit || new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       })
     : events;

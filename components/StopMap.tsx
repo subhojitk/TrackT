@@ -2,55 +2,33 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { Map, LayerGroup, Marker } from "leaflet";
+import type { Map as LeafletMap, LayerGroup, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { GL_STOPS } from "@/lib/stops";
 import { useVehicles } from "@/hooks/useVehicles";
 import { useShapes } from "@/hooks/useShapes";
 import { useStopPositions } from "@/hooks/useStopPositions";
-
-const BRANCH_COLORS: Record<string, string> = {
-  Trunk:      "#22c55e",
-  "B Branch": "#16a34a",
-  "C Branch": "#15803d",
-  "D Branch": "#4ade80",
-  "E Branch": "#86efac",
-  GLX:        "#bbf7d0",
-};
-
-const VEHICLE_COLORS: Record<string, string> = {
-  B: "#4ade80",
-  C: "#86efac",
-  D: "#34d399",
-  E: "#6ee7b7",
-  GL: "#22c55e",
-};
-
-const ROUTE_COLORS: Record<string, string> = {
-  "Green-B": "#16a34a",
-  "Green-C": "#15803d",
-  "Green-D": "#4ade80",
-  "Green-E": "#86efac",
-};
-
-const stopIndex = Object.fromEntries(GL_STOPS.map(s => [s.id, s]));
+import { getLine } from "@/lib/lines";
 
 interface Props {
   currentStopId?: string;
   fillContainer?: boolean;
+  lineId?: string;
 }
 
-export default function StopMap({ currentStopId, fillContainer }: Props) {
+export default function StopMap({ currentStopId, fillContainer, lineId = "Green" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<Map | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
   const vehicleLayerRef = useRef<LayerGroup | null>(null);
   const shapeLayerRef = useRef<LayerGroup | null>(null);
   const stopLayerRef = useRef<LayerGroup | null>(null);
-  const vehicleMarkersRef = useRef<Map<string, Marker>>(new Map());
+  const vehicleMarkersRef = useRef(new globalThis.Map<string, Marker>());
   const router = useRouter();
-  const { vehicles } = useVehicles();
-  const { shapes } = useShapes();
-  const stopPositions = useStopPositions();
+  const { vehicles } = useVehicles(lineId);
+  const { shapes } = useShapes(lineId);
+  const stopPositions = useStopPositions(lineId);
+
+  const line = getLine(lineId);
+  const lineColor = line?.color ?? "#22c55e";
 
   // Initialize map once
   useEffect(() => {
@@ -58,13 +36,12 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
 
-    const center: [number, number] = currentStopId && stopIndex[currentStopId]
-      ? [stopIndex[currentStopId].lat, stopIndex[currentStopId].lon]
-      : [42.356, -71.1];
+    const defaultCenter = line?.mapCenter ?? [42.356, -71.1];
+    const defaultZoom = line?.mapZoom ?? 12;
 
     const map = L.map(containerRef.current, {
-      center,
-      zoom: currentStopId ? 14 : 12,
+      center: defaultCenter,
+      zoom: defaultZoom,
       zoomControl: true,
     });
     mapRef.current = map;
@@ -94,29 +71,24 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
-    for (const stop of GL_STOPS) {
-      const pos = stopPositions[stop.id];
-      const lat = pos?.lat ?? stop.lat;
-      const lon = pos?.lon ?? stop.lon;
-      const isCurrent = stop.id === currentStopId;
-      const color = BRANCH_COLORS[stop.section] ?? "#22c55e";
-      const circle = L.circleMarker([lat, lon], {
+    for (const [stopId, pos] of Object.entries(stopPositions)) {
+      const isCurrent = stopId === currentStopId;
+      const circle = L.circleMarker([pos.lat, pos.lon], {
         radius: isCurrent ? 9 : 5,
-        color: isCurrent ? "#fff" : color,
-        fillColor: color,
+        color: isCurrent ? "#fff" : lineColor,
+        fillColor: lineColor,
         fillOpacity: isCurrent ? 1 : 0.7,
         weight: isCurrent ? 2 : 1,
       }).addTo(layer);
-      circle.bindTooltip(stop.name, { direction: "top", offset: [0, -6], opacity: 0.95 });
-      circle.on("click", () => router.push(`/stop/${stop.id}`));
+      circle.on("click", () => router.push(`/stop/${lineId}/${stopId}`));
     }
-  }, [currentStopId, router, stopPositions]);
+  }, [currentStopId, router, stopPositions, lineId, lineColor]);
 
   // Recenter when currentStopId changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !currentStopId) return;
-    const pos = stopPositions[currentStopId] ?? stopIndex[currentStopId];
+    const pos = stopPositions[currentStopId];
     if (!pos) return;
     map.setView([pos.lat, pos.lon], 14, { animate: true });
   }, [currentStopId, stopPositions]);
@@ -128,14 +100,14 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
-    for (const [routeId, points] of Object.entries(shapes)) {
+    for (const [, points] of Object.entries(shapes)) {
       L.polyline(points, {
-        color: ROUTE_COLORS[routeId] ?? "#22c55e",
+        color: lineColor,
         weight: 3,
         opacity: 0.75,
       }).addTo(layer);
     }
-  }, [shapes]);
+  }, [shapes, lineColor]);
 
   // Update live train markers (incremental — no full redraw)
   useEffect(() => {
@@ -146,7 +118,6 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     const markerMap = vehicleMarkersRef.current;
     const currentIds = new Set(vehicles.map(v => v.id));
 
-    // Remove markers for vehicles no longer in feed
     for (const [id, marker] of markerMap.entries()) {
       if (!currentIds.has(id)) {
         layer.removeLayer(marker);
@@ -155,10 +126,9 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     }
 
     for (const v of vehicles) {
-      const color = VEHICLE_COLORS[v.branch] ?? "#22c55e";
       const stopped = v.status === "STOPPED_AT";
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-        <circle cx="10" cy="10" r="9" fill="${color}" fill-opacity="${stopped ? 0.5 : 0.9}" stroke="#000" stroke-width="1.5"/>
+        <circle cx="10" cy="10" r="9" fill="${lineColor}" fill-opacity="${stopped ? 0.5 : 0.9}" stroke="#000" stroke-width="1.5"/>
         <polygon points="10,2 14,14 10,11 6,14" fill="white" fill-opacity="0.9"
           transform="rotate(${v.bearing}, 10, 10)"/>
       </svg>`;
@@ -181,7 +151,7 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
         markerMap.set(v.id, marker);
       }
     }
-  }, [vehicles]);
+  }, [vehicles, lineColor]);
 
   return (
     <div

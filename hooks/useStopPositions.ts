@@ -6,9 +6,9 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useStopPositions() {
+export function useStopPositions(lineId = "Green") {
   const { data } = useSWR<Record<string, { lat: number; lon: number }>>(
-    "/api/mbta/stops",
+    `/api/mbta/stops?route=${lineId}`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 300_000 }
   );

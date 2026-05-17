@@ -6,9 +6,9 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useShapes() {
+export function useShapes(lineId = "Green") {
   const { data, error } = useSWR<Record<string, [number, number][]>>(
-    "/api/mbta/shapes",
+    `/api/mbta/shapes?route=${lineId}`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 300_000 }
   );

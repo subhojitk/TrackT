@@ -7,9 +7,9 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useAlerts(stopId: string) {
+export function useAlerts(stopId: string, lineId = "Green") {
   const { data, error, isLoading } = useSWR<Alert[]>(
-    stopId ? `/api/mbta/alerts?stop=${stopId}` : null,
+    stopId ? `/api/mbta/alerts?stop=${stopId}&route=${lineId}` : null,
     fetcher,
     {
       refreshInterval: 60_000,

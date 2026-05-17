@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import type { TransitEvent } from "@/types/mbta";
-import { VENUES, RED_SOX_TEAM_ID, BRUINS_ABBREV, CELTICS_ESPN_SLUG } from "@/lib/venues";
+import { VENUES, RED_SOX_TEAM_ID, BRUINS_ABBREV, CELTICS_ESPN_SLUG, type StopRef } from "@/lib/venues";
 import { GL_STOPS } from "@/lib/stops";
 
 const TM_KEY = process.env.TICKETMASTER_API_KEY ?? "";
 
 // Find nearest GL stops to a lat/lon (returns up to 2 within 0.75 miles)
-function nearbyStops(lat: number, lon: number): string[] {
+function nearbyStops(lat: number, lon: number): StopRef[] {
   const R = 3959; // earth radius miles
   return GL_STOPS
     .map(s => {
@@ -14,12 +14,12 @@ function nearbyStops(lat: number, lon: number): string[] {
       const dLon = ((s.lon - lon) * Math.PI) / 180;
       const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((s.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
       const miles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return { id: s.id, miles };
+      return { stopId: s.id, lineId: "Green", miles };
     })
     .filter(s => s.miles <= 0.75)
     .sort((a, b) => a.miles - b.miles)
     .slice(0, 2)
-    .map(s => s.id);
+    .map(({ stopId, lineId }) => ({ stopId, lineId }));
 }
 
 function crowdFromCapacity(cap: number | undefined): TransitEvent["crowdLevel"] {

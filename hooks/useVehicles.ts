@@ -7,9 +7,9 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useVehicles(refreshInterval = 10_000) {
+export function useVehicles(lineId = "Green", refreshInterval = 10_000) {
   const { data, error, isLoading } = useSWR<Vehicle[]>(
-    "/api/mbta/vehicles",
+    `/api/mbta/vehicles?route=${lineId}`,
     fetcher,
     { refreshInterval, dedupingInterval: 8_000, revalidateOnFocus: false }
   );

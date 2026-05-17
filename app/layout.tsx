@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TrackT — MBTA Green Line",
-  description: "Real-time MBTA Green Line departures with delay context",
+  title: "TrackT — MBTA",
+  description: "Real-time MBTA departures & delay context for all lines",
   manifest: "/manifest.json",
 };
 
