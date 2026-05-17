@@ -30,6 +30,20 @@ export interface HistoricalBaseline {
   sampleSize: number;
 }
 
+export interface Vehicle {
+  id: string;
+  lat: number;
+  lon: number;
+  bearing: number;
+  speed: number | null;
+  status: "IN_TRANSIT_TO" | "STOPPED_AT" | "INCOMING_AT";
+  directionId: 0 | 1;
+  route: string;
+  branch: string;
+  headsign: string;
+  currentStopId: string | null;
+}
+
 export interface TransitEvent {
   id: string;
   name: string;
