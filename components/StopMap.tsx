@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import type { Map, LayerGroup } from "leaflet";
+import type { Map, LayerGroup, Marker } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { GL_STOPS } from "@/lib/stops";
 import { useVehicles } from "@/hooks/useVehicles";
@@ -46,6 +46,7 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
   const vehicleLayerRef = useRef<LayerGroup | null>(null);
   const shapeLayerRef = useRef<LayerGroup | null>(null);
   const stopLayerRef = useRef<LayerGroup | null>(null);
+  const vehicleMarkersRef = useRef<Map<string, Marker>>(new Map());
   const router = useRouter();
   const { vehicles } = useVehicles();
   const { shapes } = useShapes();
@@ -82,6 +83,7 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
       vehicleLayerRef.current = null;
       shapeLayerRef.current = null;
       stopLayerRef.current = null;
+      vehicleMarkersRef.current.clear();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -135,13 +137,23 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
     }
   }, [shapes]);
 
-  // Update live train markers
+  // Update live train markers (incremental — no full redraw)
   useEffect(() => {
     const layer = vehicleLayerRef.current;
     if (!layer) return;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
-    layer.clearLayers();
+    const markerMap = vehicleMarkersRef.current;
+    const currentIds = new Set(vehicles.map(v => v.id));
+
+    // Remove markers for vehicles no longer in feed
+    for (const [id, marker] of markerMap.entries()) {
+      if (!currentIds.has(id)) {
+        layer.removeLayer(marker);
+        markerMap.delete(id);
+      }
+    }
+
     for (const v of vehicles) {
       const color = VEHICLE_COLORS[v.branch] ?? "#22c55e";
       const stopped = v.status === "STOPPED_AT";
@@ -151,15 +163,23 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
           transform="rotate(${v.bearing}, 10, 10)"/>
       </svg>`;
       const icon = L.divIcon({ html: svg, className: "", iconSize: [20, 20], iconAnchor: [10, 10] });
-      const marker = L.marker([v.lat, v.lon], { icon, zIndexOffset: 1000 }).addTo(layer);
       const speedStr = v.speed !== null ? ` · ${Math.round(v.speed)} mph` : "";
-      marker.bindTooltip(
-        `<div style="font-size:12px;line-height:1.4">
-          <strong>${v.branch} · ${v.headsign}</strong><br/>
-          <span style="color:#71717a">${stopped ? "⏹ Stopped" : "▶ Moving"}${speedStr}</span>
-        </div>`,
-        { direction: "top", offset: [0, -10], opacity: 0.97 }
-      );
+      const tooltip = `<div style="font-size:12px;line-height:1.4">
+        <strong>${v.branch} · ${v.headsign}</strong><br/>
+        <span style="color:#71717a">${stopped ? "⏹ Stopped" : "▶ Moving"}${speedStr}</span>
+      </div>`;
+
+      const existing = markerMap.get(v.id);
+      if (existing) {
+        existing.setLatLng([v.lat, v.lon]);
+        existing.setIcon(icon);
+        existing.unbindTooltip();
+        existing.bindTooltip(tooltip, { direction: "top", offset: [0, -10], opacity: 0.97 });
+      } else {
+        const marker = L.marker([v.lat, v.lon], { icon, zIndexOffset: 1000 }).addTo(layer);
+        marker.bindTooltip(tooltip, { direction: "top", offset: [0, -10], opacity: 0.97 });
+        markerMap.set(v.id, marker);
+      }
     }
   }, [vehicles]);
 

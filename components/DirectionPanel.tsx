@@ -1,16 +1,16 @@
 "use client";
 
-import { usePredictions } from "@/hooks/usePredictions";
+import type { Prediction } from "@/types/mbta";
 import { formatTime, minutesUntil, delayLabel, branchBadgeColor } from "@/lib/utils";
 
 interface Props {
-  stopId: string;
+  predictions: Prediction[];
+  isLoading: boolean;
   direction: 0 | 1;
   label: string;
 }
 
-export default function DirectionPanel({ stopId, direction, label }: Props) {
-  const { predictions, isLoading } = usePredictions(stopId);
+export default function DirectionPanel({ predictions, isLoading, direction, label }: Props) {
 
   const now = new Date();
   const trains = predictions

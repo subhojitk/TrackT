@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePredictions } from "@/hooks/usePredictions";
+import type { Prediction } from "@/types/mbta";
 
 interface FeedEntry {
   id: string;
@@ -18,8 +18,7 @@ const TYPE_CLS: Record<string, string> = {
   gone:    "text-zinc-500",
 };
 
-export default function LiveFeed({ stopId }: { stopId: string }) {
-  const { predictions } = usePredictions(stopId);
+export default function LiveFeed({ predictions }: { predictions: Prediction[] }) {
   const prevRef = useRef<Map<string, { delay: number | null; rel: string | null }>>(new Map());
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const initialized = useRef(false);

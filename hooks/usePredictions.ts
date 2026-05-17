@@ -13,7 +13,7 @@ export function usePredictions(stopId: string, refreshInterval = 30_000) {
     fetcher,
     {
       refreshInterval,
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       dedupingInterval: 10_000,
     }
   );

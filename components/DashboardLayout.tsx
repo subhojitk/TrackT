@@ -21,8 +21,7 @@ function Clock() {
   return <span className="tabular-nums text-green-400">{time}</span>;
 }
 
-function StatusDot({ stopId }: { stopId: string }) {
-  const { isLoading, isError } = usePredictions(stopId);
+function StatusDot({ isLoading, isError }: { isLoading: boolean; isError: boolean }) {
   const cls = isError
     ? "bg-red-500"
     : isLoading
@@ -37,6 +36,17 @@ interface Props {
 }
 
 export default function DashboardLayout({ stopId, stopName }: Props) {
+  const { predictions, isLoading, isError } = usePredictions(stopId);
+
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    setIsDesktop(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   return (
     <div className="flex flex-col bg-zinc-950 font-mono text-zinc-100 overflow-hidden" style={{ height: "100dvh" }}>
 
@@ -47,7 +57,7 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
             TRACKT
           </a>
           <span className="text-zinc-700">|</span>
-          <StatusDot stopId={stopId} />
+          <StatusDot isLoading={isLoading} isError={isError} />
           <span className="text-zinc-500 text-xs tracking-widest">LIVE</span>
         </div>
 
@@ -64,15 +74,17 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
       {/* ── Body ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left: Map */}
-        <div className="hidden md:flex flex-col border-r border-zinc-800 shrink-0" style={{ width: "580px" }}>
-          <div className="px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/60">
-            <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-400">NETWORK MAP</span>
+        {/* Left: Map — only mounted on desktop so useVehicles doesn't poll on mobile */}
+        {isDesktop && (
+          <div className="flex flex-col border-r border-zinc-800 shrink-0" style={{ width: "580px" }}>
+            <div className="px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/60">
+              <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-400">NETWORK MAP</span>
+            </div>
+            <div className="flex-1 relative">
+              <StopMap currentStopId={stopId} fillContainer />
+            </div>
           </div>
-          <div className="flex-1 relative">
-            <StopMap currentStopId={stopId} fillContainer />
-          </div>
-        </div>
+        )}
 
         {/* Right: panels */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
@@ -85,15 +97,15 @@ export default function DashboardLayout({ stopId, stopName }: Props) {
 
           {/* Inbound / Outbound */}
           <div className="flex flex-1 border-b border-zinc-800 overflow-hidden min-h-0">
-            <DirectionPanel stopId={stopId} direction={1} label="INBOUND" />
-            <DirectionPanel stopId={stopId} direction={0} label="OUTBOUND" />
+            <DirectionPanel predictions={predictions} isLoading={isLoading} direction={1} label="INBOUND" />
+            <DirectionPanel predictions={predictions} isLoading={isLoading} direction={0} label="OUTBOUND" />
           </div>
 
           {/* Events + Alerts + Live Feed */}
           <div className="flex shrink-0 overflow-hidden" style={{ height: "220px" }}>
             <EventsPanel stopId={stopId} />
             <AlertsPanel stopId={stopId} />
-            <LiveFeed stopId={stopId} />
+            <LiveFeed predictions={predictions} />
           </div>
 
         </div>
