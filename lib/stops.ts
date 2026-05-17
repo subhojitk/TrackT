@@ -1,0 +1,86 @@
+import type { StopInfo } from "@/types/mbta";
+
+export const GL_STOPS: StopInfo[] = [
+  // Trunk
+  { id: "place-lech",   name: "Lechmere",           section: "GLX",      lat: 42.3700, lon: -71.0768, accessible: true  },
+  { id: "place-spmnl",  name: "Science Park/West End", section: "GLX",    lat: 42.3664, lon: -71.0674, accessible: true  },
+  { id: "place-north",  name: "North Station",       section: "Trunk",    lat: 42.3654, lon: -71.0603, accessible: true  },
+  { id: "place-haecl",  name: "Haymarket",           section: "Trunk",    lat: 42.3634, lon: -71.0578, accessible: true  },
+  { id: "place-gover",  name: "Government Center",   section: "Trunk",    lat: 42.3596, lon: -71.0592, accessible: true  },
+  { id: "place-pktrm",  name: "Park Street",         section: "Trunk",    lat: 42.3564, lon: -71.0622, accessible: true  },
+  { id: "place-boyls",  name: "Boylston",            section: "Trunk",    lat: 42.3550, lon: -71.0639, accessible: false },
+  { id: "place-armnl",  name: "Arlington",           section: "Trunk",    lat: 42.3510, lon: -71.0704, accessible: false },
+  { id: "place-coecl",  name: "Copley",              section: "Trunk",    lat: 42.3496, lon: -71.0771, accessible: true  },
+  { id: "place-hymnl",  name: "Hynes Convention Center", section: "Trunk", lat: 42.3479, lon: -71.0876, accessible: true  },
+  { id: "place-kencl",  name: "Kenmore",             section: "Trunk",    lat: 42.3484, lon: -71.0955, accessible: true  },
+  // B Branch
+  { id: "place-bland",  name: "Blandford Street",    section: "B Branch", lat: 42.3492, lon: -71.1002, accessible: false },
+  { id: "place-buest",  name: "BU East",             section: "B Branch", lat: 42.3499, lon: -71.1042, accessible: false },
+  { id: "place-bucen",  name: "BU Central",          section: "B Branch", lat: 42.3503, lon: -71.1091, accessible: false },
+  { id: "place-amory",  name: "Amory Street",        section: "B Branch", lat: 42.3502, lon: -71.1154, accessible: false },
+  { id: "place-babck",  name: "Babcock Street",      section: "B Branch", lat: 42.3511, lon: -71.1214, accessible: false },
+  { id: "place-brico",  name: "Packard's Corner",    section: "B Branch", lat: 42.3516, lon: -71.1259, accessible: false },
+  { id: "place-harvd",  name: "Harvard Avenue",      section: "B Branch", lat: 42.3503, lon: -71.1318, accessible: false },
+  { id: "place-grigg",  name: "Griggs Street",       section: "B Branch", lat: 42.3487, lon: -71.1367, accessible: false },
+  { id: "place-allsn",  name: "Allston Street",      section: "B Branch", lat: 42.3481, lon: -71.1396, accessible: false },
+  { id: "place-wrnst",  name: "Warren Street",       section: "B Branch", lat: 42.3480, lon: -71.1430, accessible: false },
+  { id: "place-wascm",  name: "Washington Street",   section: "B Branch", lat: 42.3458, lon: -71.1511, accessible: false },
+  { id: "place-sthld",  name: "Sutherland Road",     section: "B Branch", lat: 42.3418, lon: -71.1570, accessible: false },
+  { id: "place-chswk",  name: "Chiswick Road",       section: "B Branch", lat: 42.3399, lon: -71.1594, accessible: false },
+  { id: "place-chill",  name: "Chestnut Hill Avenue",section: "B Branch", lat: 42.3380, lon: -71.1615, accessible: false },
+  { id: "place-sougr",  name: "South Street",        section: "B Branch", lat: 42.3355, lon: -71.1641, accessible: false },
+  { id: "place-lake",   name: "Boston College",      section: "B Branch", lat: 42.3398, lon: -71.1669, accessible: false },
+  // C Branch
+  { id: "place-smary",  name: "Saint Mary's Street", section: "C Branch", lat: 42.3428, lon: -71.1052, accessible: false },
+  { id: "place-hwsst",  name: "Hawes Street",        section: "C Branch", lat: 42.3424, lon: -71.1116, accessible: false },
+  { id: "place-kntst",  name: "Kent Street",         section: "C Branch", lat: 42.3419, lon: -71.1161, accessible: false },
+  { id: "place-stpul",  name: "St. Paul Street",     section: "C Branch", lat: 42.3417, lon: -71.1201, accessible: false },
+  { id: "place-cool",   name: "Coolidge Corner",     section: "C Branch", lat: 42.3419, lon: -71.1251, accessible: true  },
+  { id: "place-sumav",  name: "Summit Avenue",       section: "C Branch", lat: 42.3387, lon: -71.1295, accessible: false },
+  { id: "place-bndhl",  name: "Brandon Hall",        section: "C Branch", lat: 42.3381, lon: -71.1318, accessible: false },
+  { id: "place-fbkst",  name: "Fairbanks Street",    section: "C Branch", lat: 42.3373, lon: -71.1348, accessible: false },
+  { id: "place-bcnwa",  name: "Washington Square",   section: "C Branch", lat: 42.3364, lon: -71.1393, accessible: false },
+  { id: "place-tapst",  name: "Tappan Street",       section: "C Branch", lat: 42.3359, lon: -71.1427, accessible: false },
+  { id: "place-denrd",  name: "Dean Road",           section: "C Branch", lat: 42.3349, lon: -71.1466, accessible: false },
+  { id: "place-engav",  name: "Englewood Avenue",    section: "C Branch", lat: 42.3342, lon: -71.1500, accessible: false },
+  { id: "place-clmnl",  name: "Cleveland Circle",    section: "C Branch", lat: 42.3359, lon: -71.1518, accessible: false },
+  // D Branch
+  { id: "place-fenwy",  name: "Fenway",              section: "D Branch", lat: 42.3437, lon: -71.0990, accessible: true  },
+  { id: "place-longw",  name: "Longwood",            section: "D Branch", lat: 42.3413, lon: -71.1062, accessible: false },
+  { id: "place-brkhl",  name: "Brookline Hills",     section: "D Branch", lat: 42.3315, lon: -71.1263, accessible: true  },
+  { id: "place-brkvi",  name: "Brookline Village",   section: "D Branch", lat: 42.3318, lon: -71.1165, accessible: true  },
+  { id: "place-bcnfd",  name: "Beaconsfield",        section: "D Branch", lat: 42.3349, lon: -71.1424, accessible: true  },
+  { id: "place-rsmnl",  name: "Reservoir",           section: "D Branch", lat: 42.3355, lon: -71.1481, accessible: true  },
+  { id: "place-chhil",  name: "Chestnut Hill",       section: "D Branch", lat: 42.3264, lon: -71.1622, accessible: true  },
+  { id: "place-newto",  name: "Newton Centre",       section: "D Branch", lat: 42.3295, lon: -71.1924, accessible: true  },
+  { id: "place-newtn",  name: "Newton Highlands",    section: "D Branch", lat: 42.3220, lon: -71.2063, accessible: true  },
+  { id: "place-eliot",  name: "Eliot",               section: "D Branch", lat: 42.3196, lon: -71.2152, accessible: true  },
+  { id: "place-waban",  name: "Waban",               section: "D Branch", lat: 42.3265, lon: -71.2314, accessible: true  },
+  { id: "place-woodl",  name: "Woodland",            section: "D Branch", lat: 42.3333, lon: -71.2413, accessible: true  },
+  { id: "place-river",  name: "Riverside",           section: "D Branch", lat: 42.3375, lon: -71.2527, accessible: true  },
+  // E Branch
+  { id: "place-prmnl",  name: "Prudential",          section: "E Branch", lat: 42.3478, lon: -71.0827, accessible: true  },
+  { id: "place-symcl",  name: "Symphony",            section: "E Branch", lat: 42.3426, lon: -71.0855, accessible: true  },
+  { id: "place-nuniv",  name: "Northeastern University", section: "E Branch", lat: 42.3368, lon: -71.0893, accessible: true  },
+  { id: "place-mfa",    name: "Museum of Fine Arts", section: "E Branch", lat: 42.3366, lon: -71.0966, accessible: true  },
+  { id: "place-lngmd",  name: "Longwood Medical Area", section: "E Branch", lat: 42.3363, lon: -71.1021, accessible: true  },
+  { id: "place-brgfd",  name: "Brigham Circle",      section: "E Branch", lat: 42.3345, lon: -71.1046, accessible: true  },
+  { id: "place-fenwd",  name: "Fenwood Road",        section: "E Branch", lat: 42.3326, lon: -71.1060, accessible: false },
+  { id: "place-mispk",  name: "Mission Park",        section: "E Branch", lat: 42.3305, lon: -71.1062, accessible: false },
+  { id: "place-rvrwy",  name: "Riverway",            section: "E Branch", lat: 42.3283, lon: -71.1077, accessible: false },
+  { id: "place-bckhl",  name: "Back of the Hill",    section: "E Branch", lat: 42.3266, lon: -71.1115, accessible: false },
+  { id: "place-hsmnl",  name: "Heath Street",        section: "E Branch", lat: 42.3252, lon: -71.1147, accessible: false },
+  // GLX
+  { id: "place-gilmn",  name: "Gilman Square",       section: "GLX",      lat: 42.3873, lon: -71.1020, accessible: true  },
+  { id: "place-esomr",  name: "East Somerville",     section: "GLX",      lat: 42.3961, lon: -71.0902, accessible: true  },
+  { id: "place-union",  name: "Union Square",        section: "GLX",      lat: 42.3775, lon: -71.0994, accessible: true  },
+  { id: "place-mdftf",  name: "Medford/Tufts",       section: "GLX",      lat: 42.4064, lon: -71.1199, accessible: true  },
+  { id: "place-ball",   name: "Ball Square",         section: "GLX",      lat: 42.3996, lon: -71.1114, accessible: true  },
+  { id: "place-magno",  name: "Magoun Square",       section: "GLX",      lat: 42.3964, lon: -71.1063, accessible: true  },
+];
+
+export const STOP_SECTIONS = ["Trunk", "B Branch", "C Branch", "D Branch", "E Branch", "GLX"] as const;
+
+export function getStop(id: string) {
+  return GL_STOPS.find(s => s.id === id) ?? null;
+}
