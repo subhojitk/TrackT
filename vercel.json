@@ -1,8 +1,5 @@
 {
   "framework": "nextjs",
-  "env": {
-    "MBTA_API_KEY": "@mbta-api-key"
-  },
   "headers": [
     {
       "source": "/api/(.*)",
