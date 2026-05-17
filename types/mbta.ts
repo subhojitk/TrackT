@@ -30,6 +30,17 @@ export interface HistoricalBaseline {
   sampleSize: number;
 }
 
+export interface TransitEvent {
+  id: string;
+  name: string;
+  venue: string;
+  area: string;
+  startTime: string;       // ISO 8601
+  sport: "MLB" | "NHL" | "NBA" | "EVENT";
+  affectedStops: string[]; // stop IDs
+  crowdLevel: "medium" | "high" | "very-high";
+}
+
 export interface StopInfo {
   id: string;
   name: string;
