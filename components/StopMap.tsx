@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import L from "leaflet";
+import type { Map, LayerGroup } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { GL_STOPS } from "@/lib/stops";
 import { useVehicles } from "@/hooks/useVehicles";
@@ -42,10 +42,10 @@ interface Props {
 
 export default function StopMap({ currentStopId, fillContainer }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const vehicleLayerRef = useRef<L.LayerGroup | null>(null);
-  const shapeLayerRef = useRef<L.LayerGroup | null>(null);
-  const stopLayerRef = useRef<L.LayerGroup | null>(null);
+  const mapRef = useRef<Map | null>(null);
+  const vehicleLayerRef = useRef<LayerGroup | null>(null);
+  const shapeLayerRef = useRef<LayerGroup | null>(null);
+  const stopLayerRef = useRef<LayerGroup | null>(null);
   const router = useRouter();
   const { vehicles } = useVehicles();
   const { shapes } = useShapes();
@@ -54,6 +54,8 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
   // Initialize map once
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const L = require("leaflet") as typeof import("leaflet");
 
     const center: [number, number] = currentStopId && stopIndex[currentStopId]
       ? [stopIndex[currentStopId].lat, stopIndex[currentStopId].lon]
@@ -87,6 +89,8 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
   useEffect(() => {
     const layer = stopLayerRef.current;
     if (!layer) return;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
     for (const stop of GL_STOPS) {
       const pos = stopPositions[stop.id];
@@ -119,6 +123,8 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
   useEffect(() => {
     const layer = shapeLayerRef.current;
     if (!layer || Object.keys(shapes).length === 0) return;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
     for (const [routeId, points] of Object.entries(shapes)) {
       L.polyline(points, {
@@ -133,6 +139,8 @@ export default function StopMap({ currentStopId, fillContainer }: Props) {
   useEffect(() => {
     const layer = vehicleLayerRef.current;
     if (!layer) return;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
     for (const v of vehicles) {
       const color = VEHICLE_COLORS[v.branch] ?? "#22c55e";
