@@ -56,7 +56,7 @@ function makeTrainIcon(color: string, bearing: number, stopped: boolean): L.DivI
 // Recenter map when currentStopId changes
 function MapRecenter({ stopId }: { stopId?: string }) {
   const map = useMap();
-  const prevId = useRef<string | undefined>();
+  const prevId = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (stopId && stopId !== prevId.current && stopIndex[stopId]) {
       const s = stopIndex[stopId];
