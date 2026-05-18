@@ -30,10 +30,8 @@ function HomeContent() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* LEFT: map — always present, overview when nothing selected */}
-        <div className="hidden md:block relative border-r border-zinc-800 shrink-0" style={{ width: "580px" }}>
-          <div className="absolute inset-0">
-            <StopMap lineId={lineId ?? undefined} />
-          </div>
+        <div className="hidden md:block relative border-r border-zinc-800 shrink-0 h-full" style={{ width: "580px" }}>
+          <StopMap lineId={lineId ?? undefined} fillContainer />
         </div>
 
         {/* RIGHT: picker steps — scrollable */}
