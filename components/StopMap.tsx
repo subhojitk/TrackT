@@ -9,13 +9,22 @@ import { useShapes } from "@/hooks/useShapes";
 import { useStopPositions } from "@/hooks/useStopPositions";
 import { getLine } from "@/lib/lines";
 
+// Colors for each line in overview mode
+const OVERVIEW_LINE_COLORS: Record<string, string> = {
+  Red:      "#DA291C",
+  Orange:   "#ED8B00",
+  Blue:     "#003DA5",
+  Green:    "#00843D",
+  Mattapan: "#80276C",
+};
+
 interface Props {
   currentStopId?: string;
   fillContainer?: boolean;
-  lineId?: string;
+  lineId?: string; // undefined or "overview" = ghosted all-lines view
 }
 
-export default function StopMap({ currentStopId, fillContainer, lineId = "Green" }: Props) {
+export default function StopMap({ currentStopId, fillContainer, lineId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const vehicleLayerRef = useRef<LayerGroup | null>(null);
@@ -23,11 +32,16 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
   const stopLayerRef = useRef<LayerGroup | null>(null);
   const vehicleMarkersRef = useRef(new globalThis.Map<string, Marker>());
   const router = useRouter();
-  const { vehicles } = useVehicles(lineId);
-  const { shapes } = useShapes(lineId);
-  const stopPositions = useStopPositions(lineId);
 
-  const line = getLine(lineId);
+  const isOverview = !lineId || lineId === "overview";
+  const shapesKey = isOverview ? "overview" : lineId;
+  const vehiclesKey = isOverview ? null : lineId;
+
+  const { vehicles } = useVehicles(vehiclesKey ?? "Green", 10_000);
+  const { shapes } = useShapes(shapesKey);
+  const stopPositions = useStopPositions(isOverview ? undefined : lineId);
+
+  const line = lineId ? getLine(lineId) : null;
   const lineColor = line?.color ?? "#22c55e";
 
   // Initialize map once
@@ -36,8 +50,11 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
 
-    const defaultCenter = line?.mapCenter ?? [42.356, -71.1];
-    const defaultZoom = line?.mapZoom ?? 12;
+    // Overview: Boston Common center; line-specific: use line's center
+    const defaultCenter: [number, number] = isOverview
+      ? [42.3601, -71.0589]
+      : (line?.mapCenter ?? [42.356, -71.1]);
+    const defaultZoom = isOverview ? 12 : (line?.mapZoom ?? 12);
 
     const map = L.map(containerRef.current, {
       center: defaultCenter,
@@ -64,13 +81,14 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Redraw stop markers when positions or currentStopId changes
+  // Redraw stop markers (skipped in overview mode)
   useEffect(() => {
     const layer = stopLayerRef.current;
     if (!layer) return;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
+    if (isOverview) return; // no stops in overview
     for (const [stopId, pos] of Object.entries(stopPositions)) {
       const isCurrent = stopId === currentStopId;
       const circle = L.circleMarker([pos.lat, pos.lon], {
@@ -82,16 +100,16 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
       }).addTo(layer);
       circle.on("click", () => router.push(`/stop/${lineId}/${stopId}`));
     }
-  }, [currentStopId, router, stopPositions, lineId, lineColor]);
+  }, [currentStopId, router, stopPositions, lineId, lineColor, isOverview]);
 
   // Recenter when currentStopId changes
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !currentStopId) return;
+    if (!map || !currentStopId || isOverview) return;
     const pos = stopPositions[currentStopId];
     if (!pos) return;
     map.setView([pos.lat, pos.lon], 14, { animate: true });
-  }, [currentStopId, stopPositions]);
+  }, [currentStopId, stopPositions, isOverview]);
 
   // Draw route shapes
   useEffect(() => {
@@ -100,31 +118,35 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
     layer.clearLayers();
-    for (const [, points] of Object.entries(shapes)) {
-      L.polyline(points, {
-        color: lineColor,
-        weight: 3,
-        opacity: 0.75,
-      }).addTo(layer);
+    for (const [routeKey, points] of Object.entries(shapes)) {
+      const color = isOverview
+        ? (OVERVIEW_LINE_COLORS[routeKey] ?? "#ffffff")
+        : lineColor;
+      const opacity = isOverview ? 0.12 : 0.75;
+      const weight = isOverview ? 3 : 3;
+      L.polyline(points, { color, weight, opacity }).addTo(layer);
     }
-  }, [shapes, lineColor]);
+  }, [shapes, lineColor, isOverview]);
 
-  // Update live train markers (incremental — no full redraw)
+  // Incremental vehicle marker updates (skipped in overview mode)
   useEffect(() => {
     const layer = vehicleLayerRef.current;
     if (!layer) return;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const L = require("leaflet") as typeof import("leaflet");
     const markerMap = vehicleMarkersRef.current;
-    const currentIds = new Set(vehicles.map(v => v.id));
 
-    for (const [id, marker] of markerMap.entries()) {
-      if (!currentIds.has(id)) {
-        layer.removeLayer(marker);
-        markerMap.delete(id);
-      }
+    if (isOverview || vehiclesKey === null) {
+      // Clear all markers in overview
+      for (const marker of markerMap.values()) layer.removeLayer(marker);
+      markerMap.clear();
+      return;
     }
 
+    const currentIds = new Set(vehicles.map(v => v.id));
+    for (const [id, marker] of markerMap.entries()) {
+      if (!currentIds.has(id)) { layer.removeLayer(marker); markerMap.delete(id); }
+    }
     for (const v of vehicles) {
       const stopped = v.status === "STOPPED_AT";
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
@@ -138,7 +160,6 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
         <strong>${v.branch} · ${v.headsign}</strong><br/>
         <span style="color:#71717a">${stopped ? "⏹ Stopped" : "▶ Moving"}${speedStr}</span>
       </div>`;
-
       const existing = markerMap.get(v.id);
       if (existing) {
         existing.setLatLng([v.lat, v.lon]);
@@ -151,7 +172,7 @@ export default function StopMap({ currentStopId, fillContainer, lineId = "Green"
         markerMap.set(v.id, marker);
       }
     }
-  }, [vehicles, lineColor]);
+  }, [vehicles, lineColor, isOverview, vehiclesKey]);
 
   return (
     <div

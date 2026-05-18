@@ -19,7 +19,7 @@ function HomeContent() {
   const step = lineId ? "stop" : mode ? "line" : "mode";
 
   return (
-    <div className="flex flex-col min-h-dvh bg-zinc-950 font-mono">
+    <div className="flex flex-col bg-zinc-950 font-mono" style={{ height: "100dvh" }}>
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/80 shrink-0">
         <span className="font-bold tracking-[0.2em] text-sm" style={{ color: line?.color ?? "#4ade80" }}>
           TRACKT
@@ -28,41 +28,39 @@ function HomeContent() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: picker */}
-        <div className="flex flex-col flex-1 overflow-y-auto p-5 max-w-lg">
-          {step !== "mode" && (
-            <Breadcrumb mode={mode ?? undefined} lineId={lineId ?? undefined} />
-          )}
 
-          {step === "mode" && (
-            <div className="pt-4">
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">TrackT</h1>
-              <p className="text-zinc-500 text-sm mb-6">Real-time MBTA departures & delay context.</p>
-              <ModePicker />
-            </div>
-          )}
-
-          {step === "line" && mode && (
-            <LinePicker mode={mode} />
-          )}
-
-          {step === "stop" && lineId && (
-            <StopPicker lineId={lineId} />
-          )}
+        {/* LEFT: map — always present, overview when nothing selected */}
+        <div className="hidden md:block relative border-r border-zinc-800 shrink-0" style={{ width: "580px" }}>
+          <div className="absolute inset-0">
+            <StopMap lineId={lineId ?? undefined} />
+          </div>
         </div>
 
-        {/* Right: map preview — only on desktop, shows when a line is selected */}
-        <div className="hidden md:flex flex-col flex-1 border-l border-zinc-800 relative min-w-0">
-          {lineId ? (
-            <div className="absolute inset-0">
-              <StopMap lineId={lineId} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full text-zinc-700 text-xs tracking-widest">
-              SELECT A LINE TO PREVIEW MAP
-            </div>
-          )}
+        {/* RIGHT: picker steps — scrollable */}
+        <div className="flex flex-col flex-1 overflow-y-auto min-w-0">
+          <div className="p-5 max-w-lg w-full mx-auto">
+            {step !== "mode" && (
+              <Breadcrumb mode={mode ?? undefined} lineId={lineId ?? undefined} />
+            )}
+
+            {step === "mode" && (
+              <div className="pt-4">
+                <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">TrackT</h1>
+                <p className="text-zinc-500 text-sm mb-6">Real-time MBTA departures & delay context.</p>
+                <ModePicker />
+              </div>
+            )}
+
+            {step === "line" && mode && (
+              <LinePicker mode={mode} />
+            )}
+
+            {step === "stop" && lineId && (
+              <StopPicker lineId={lineId} />
+            )}
+          </div>
         </div>
+
       </div>
 
       <footer className="border-t border-zinc-800 px-4 py-2 text-[10px] text-zinc-700 text-center font-mono shrink-0">
@@ -75,7 +73,7 @@ function HomeContent() {
 export default function Home() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-dvh bg-zinc-950 text-zinc-600 text-xs tracking-widest font-mono">
+      <div className="flex items-center justify-center bg-zinc-950 text-zinc-600 text-xs tracking-widest font-mono" style={{ height: "100dvh" }}>
         LOADING…
       </div>
     }>

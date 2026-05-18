@@ -29,9 +29,18 @@ function decodePolyline(encoded: string): [number, number][] {
   return points;
 }
 
+// Overview mode: return one representative shape per major subway line (keyed by line name)
+const OVERVIEW_LINES = ["Red", "Orange", "Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Mattapan"];
+const OVERVIEW_KEY: Record<string, string> = {
+  "Red": "Red", "Orange": "Orange", "Blue": "Blue",
+  "Green-B": "Green", "Green-C": "Green", "Green-D": "Green", "Green-E": "Green",
+  "Mattapan": "Mattapan",
+};
+
 export async function GET(req: NextRequest) {
   const lineId = req.nextUrl.searchParams.get("route") ?? "Green";
-  const routeIds = getRouteIdsForLine(lineId);
+  const isOverview = lineId === "overview";
+  const routeIds = isOverview ? OVERVIEW_LINES : getRouteIdsForLine(lineId);
   const headers: HeadersInit = API_KEY ? { "x-api-key": API_KEY } : {};
   const result: Record<string, [number, number][]> = {};
 
@@ -59,7 +68,11 @@ export async function GET(req: NextRequest) {
       }
     }
     const canonical = byDir[0] ?? byDir[1];
-    if (canonical) result[route] = canonical.points;
+    if (canonical) {
+      const key = isOverview ? (OVERVIEW_KEY[route] ?? route) : route;
+      // For overview/Green, only keep one representative shape (first branch wins)
+      if (!result[key]) result[key] = canonical.points;
+    }
   }));
 
   return NextResponse.json(result, {
