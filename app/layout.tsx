@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Urbanist } from "next/font/google";
 import "./globals.css";
+
+const urbanist = Urbanist({
+  subsets: ["latin"],
+  variable: "--font-urbanist",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "TrackT — MBTA",
@@ -14,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-zinc-950 text-zinc-100 antialiased">
+      <body className={`${urbanist.variable} bg-zinc-950 text-zinc-100 antialiased`}>
         {children}
       </body>
     </html>

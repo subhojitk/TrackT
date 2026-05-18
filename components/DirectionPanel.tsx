@@ -48,12 +48,19 @@ export default function DirectionPanel({ predictions, isLoading, direction, labe
               key={p.id}
               className={`grid grid-cols-[1.25rem_1fr_2.5rem_3.5rem_3rem] gap-x-2 px-3 py-2 text-xs ${i === 0 ? "bg-zinc-800/30" : ""} ${isCancelled ? "opacity-40" : ""}`}
             >
-              <span
-                className="inline-flex items-center justify-center w-5 h-5 rounded-sm text-[10px] font-bold"
-                style={{ backgroundColor: routeBadgeStyle(p.branch).bg, color: routeBadgeStyle(p.branch).text }}
-              >
-                {p.branch}
-              </span>
+              {p.branch.length === 1 ? (
+                <span
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-sm text-[10px] font-bold shrink-0"
+                  style={{ backgroundColor: routeBadgeStyle(p.branch).bg, color: routeBadgeStyle(p.branch).text }}
+                >
+                  {p.branch}
+                </span>
+              ) : (
+                <span
+                  className="inline-block w-3 h-3 rounded-full mt-0.5 shrink-0"
+                  style={{ backgroundColor: routeBadgeStyle(p.branch).bg }}
+                />
+              )}
               <span className="truncate text-zinc-200 font-medium">{p.headsign}</span>
               <span className={`text-center font-bold tabular-nums ${mins !== null && mins <= 2 ? "text-amber-400" : "text-zinc-100"}`}>
                 {mins !== null && mins <= 0 ? "NOW" : mins !== null ? `${mins}m` : "—"}
