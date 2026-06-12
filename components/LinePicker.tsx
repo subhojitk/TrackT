@@ -16,11 +16,12 @@ export default function LinePicker({ mode }: Props) {
     <div className="w-full">
       <h2 className="text-[11px] font-bold tracking-[0.2em] text-zinc-500 mb-4">SELECT LINE</h2>
       <div className="flex flex-col gap-2">
-        {lines.map(line => (
+        {lines.map((line, i) => (
           <button
             key={line.id}
             onClick={() => router.push(`/?mode=${mode}&line=${line.id}`)}
-            className="group flex items-center gap-4 p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 transition-all text-left cursor-pointer"
+            className="group card-fluid stagger flex items-center gap-4 p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 text-left cursor-pointer"
+            style={{ "--stagger-i": Math.min(i, 12) } as React.CSSProperties}
           >
             <span
               className="shrink-0 text-xs font-black px-2.5 py-1.5 rounded-md min-w-[2.5rem] text-center"

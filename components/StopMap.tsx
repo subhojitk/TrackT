@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Map as LeafletMap, LayerGroup, Marker } from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { useVehicles } from "@/hooks/useVehicles";
 import { useShapes } from "@/hooks/useShapes";
 import { useStopPositions } from "@/hooks/useStopPositions";
-import { getLine } from "@/lib/lines";
+import { getLine, inferLineId } from "@/lib/lines";
+import { MapEngine, type HoverInfo, type StopDatum } from "./map3d/engine";
 
-// Colors for each line in overview mode
+// Route colors in overview mode (keyed by line, shapes arrive keyed by route id)
 const OVERVIEW_LINE_COLORS: Record<string, string> = {
   Red:      "#DA291C",
   Orange:   "#ED8B00",
@@ -18,167 +17,130 @@ const OVERVIEW_LINE_COLORS: Record<string, string> = {
   Mattapan: "#80276C",
 };
 
+function overviewColor(routeId: string): string {
+  return OVERVIEW_LINE_COLORS[inferLineId(routeId)] ?? "#8b8b94";
+}
+
 interface Props {
   currentStopId?: string;
   fillContainer?: boolean;
-  lineId?: string; // undefined or "overview" = ghosted all-lines view
+  lineId?: string; // undefined or "overview" = all-subway overview
 }
 
 export default function StopMap({ currentStopId, fillContainer, lineId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<LeafletMap | null>(null);
-  const vehicleLayerRef = useRef<LayerGroup | null>(null);
-  const shapeLayerRef = useRef<LayerGroup | null>(null);
-  const stopLayerRef = useRef<LayerGroup | null>(null);
-  const vehicleMarkersRef = useRef(new globalThis.Map<string, Marker>());
+  const engineRef = useRef<MapEngine | null>(null);
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const lineIdRef = useRef(lineId);
+  lineIdRef.current = lineId;
+
+  const [hover, setHover] = useState<{ info: HoverInfo; x: number; y: number } | null>(null);
 
   const isOverview = !lineId || lineId === "overview";
-  const shapesKey = isOverview ? "overview" : lineId;
-  const vehiclesKey = isOverview ? null : lineId;
+  const dataKey = isOverview ? "overview" : lineId;
 
-  const { vehicles } = useVehicles(vehiclesKey ?? "Green", 10_000);
-  const { shapes } = useShapes(shapesKey);
+  const { vehicles } = useVehicles(dataKey, 10_000);
+  const { shapes } = useShapes(dataKey);
   const stopPositions = useStopPositions(isOverview ? undefined : lineId);
 
   const line = lineId ? getLine(lineId) : null;
   const lineColor = line?.color ?? "#22c55e";
 
-  // Initialize map once
+  // Mount the engine once
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const L = require("leaflet") as typeof import("leaflet");
-
-    // Overview: Boston Common center; line-specific: use line's center
-    const defaultCenter: [number, number] = isOverview
-      ? [42.3601, -71.0589]
-      : (line?.mapCenter ?? [42.356, -71.1]);
-    const defaultZoom = isOverview ? 12 : (line?.mapZoom ?? 12);
-
-    const map = L.map(containerRef.current, {
-      center: defaultCenter,
-      zoom: defaultZoom,
-      zoomControl: true,
+    const container = containerRef.current;
+    if (!container || engineRef.current) return;
+    const engine = new MapEngine(container, {
+      onStopClick: stopId => {
+        const lid = lineIdRef.current;
+        if (lid && lid !== "overview") routerRef.current.push(`/stop/${lid}/${stopId}`);
+      },
+      onHover: (info, x, y) => setHover(info ? { info, x, y } : null),
     });
-    mapRef.current = map;
-
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-    }).addTo(map);
-
-    shapeLayerRef.current = L.layerGroup().addTo(map);
-    stopLayerRef.current = L.layerGroup().addTo(map);
-    vehicleLayerRef.current = L.layerGroup().addTo(map);
-
+    engineRef.current = engine;
+    if (process.env.NODE_ENV === "development") {
+      (window as unknown as Record<string, unknown>).__mapEngine = engine;
+    }
     return () => {
-      map.remove();
-      mapRef.current = null;
-      vehicleLayerRef.current = null;
-      shapeLayerRef.current = null;
-      stopLayerRef.current = null;
-      vehicleMarkersRef.current.clear();
+      engine.dispose();
+      engineRef.current = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Redraw stop markers (skipped in overview mode)
+  // Route shapes → glowing lines + animation tracks; refit camera per line change
+  const fittedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    const layer = stopLayerRef.current;
-    if (!layer) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const L = require("leaflet") as typeof import("leaflet");
-    layer.clearLayers();
-    if (isOverview) return; // no stops in overview
-    for (const [stopId, pos] of Object.entries(stopPositions)) {
-      const isCurrent = stopId === currentStopId;
-      const circle = L.circleMarker([pos.lat, pos.lon], {
-        radius: isCurrent ? 9 : 5,
-        color: isCurrent ? "#fff" : lineColor,
-        fillColor: lineColor,
-        fillOpacity: isCurrent ? 1 : 0.7,
-        weight: isCurrent ? 2 : 1,
-      }).addTo(layer);
-      circle.on("click", () => router.push(`/stop/${lineId}/${stopId}`));
+    const engine = engineRef.current;
+    if (!engine || Object.keys(shapes).length === 0) return;
+    const colors: Record<string, string> = {};
+    for (const key of Object.keys(shapes)) {
+      colors[key] = isOverview ? overviewColor(key) : lineColor;
     }
-  }, [currentStopId, router, stopPositions, lineId, lineColor, isOverview]);
+    const fit = fittedKeyRef.current !== dataKey && !currentStopId;
+    fittedKeyRef.current = dataKey ?? null;
+    engine.setShapes(shapes, colors, fit);
+  }, [shapes, lineColor, isOverview, dataKey, currentStopId]);
 
-  // Recenter when currentStopId changes
+  // Stops
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !currentStopId || isOverview) return;
-    const pos = stopPositions[currentStopId];
-    if (!pos) return;
-    map.setView([pos.lat, pos.lon], 14, { animate: true });
-  }, [currentStopId, stopPositions, isOverview]);
-
-  // Draw route shapes
-  useEffect(() => {
-    const layer = shapeLayerRef.current;
-    if (!layer || Object.keys(shapes).length === 0) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const L = require("leaflet") as typeof import("leaflet");
-    layer.clearLayers();
-    for (const [routeKey, points] of Object.entries(shapes)) {
-      const color = isOverview
-        ? (OVERVIEW_LINE_COLORS[routeKey] ?? "#ffffff")
-        : lineColor;
-      const opacity = isOverview ? 0.12 : 0.75;
-      const weight = isOverview ? 3 : 3;
-      L.polyline(points, { color, weight, opacity }).addTo(layer);
-    }
-  }, [shapes, lineColor, isOverview]);
-
-  // Incremental vehicle marker updates (skipped in overview mode)
-  useEffect(() => {
-    const layer = vehicleLayerRef.current;
-    if (!layer) return;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const L = require("leaflet") as typeof import("leaflet");
-    const markerMap = vehicleMarkersRef.current;
-
-    if (isOverview || vehiclesKey === null) {
-      // Clear all markers in overview
-      for (const marker of markerMap.values()) layer.removeLayer(marker);
-      markerMap.clear();
+    const engine = engineRef.current;
+    if (!engine) return;
+    if (isOverview) {
+      engine.setStops([], lineColor);
       return;
     }
+    const stops: StopDatum[] = Object.entries(stopPositions)
+      .filter(([, p]) => p.isStation)
+      .map(([id, p]) => ({ id, lat: p.lat, lon: p.lon, name: p.name }));
+    engine.setStops(stops, lineColor, currentStopId);
+  }, [stopPositions, lineColor, isOverview, currentStopId]);
 
-    const currentIds = new Set(vehicles.map(v => v.id));
-    for (const [id, marker] of markerMap.entries()) {
-      if (!currentIds.has(id)) { layer.removeLayer(marker); markerMap.delete(id); }
-    }
-    for (const v of vehicles) {
-      const stopped = v.status === "STOPPED_AT";
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-        <circle cx="10" cy="10" r="9" fill="${lineColor}" fill-opacity="${stopped ? 0.5 : 0.9}" stroke="#000" stroke-width="1.5"/>
-        <polygon points="10,2 14,14 10,11 6,14" fill="white" fill-opacity="0.9"
-          transform="rotate(${v.bearing}, 10, 10)"/>
-      </svg>`;
-      const icon = L.divIcon({ html: svg, className: "", iconSize: [20, 20], iconAnchor: [10, 10] });
-      const speedStr = v.speed !== null ? ` · ${Math.round(v.speed)} mph` : "";
-      const tooltip = `<div style="font-size:12px;line-height:1.4">
-        <strong>${v.branch} · ${v.headsign}</strong><br/>
-        <span style="color:#71717a">${stopped ? "⏹ Stopped" : "▶ Moving"}${speedStr}</span>
-      </div>`;
-      const existing = markerMap.get(v.id);
-      if (existing) {
-        existing.setLatLng([v.lat, v.lon]);
-        existing.setIcon(icon);
-        existing.unbindTooltip();
-        existing.bindTooltip(tooltip, { direction: "top", offset: [0, -10], opacity: 0.97 });
-      } else {
-        const marker = L.marker([v.lat, v.lon], { icon, zIndexOffset: 1000 }).addTo(layer);
-        marker.bindTooltip(tooltip, { direction: "top", offset: [0, -10], opacity: 0.97 });
-        markerMap.set(v.id, marker);
-      }
-    }
-  }, [vehicles, lineColor, isOverview, vehiclesKey]);
+  // Fly to the selected stop
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine || !currentStopId || isOverview) return;
+    const pos = stopPositions[currentStopId];
+    if (!pos) return;
+    engine.flyTo(pos.lat, pos.lon, 110);
+  }, [currentStopId, stopPositions, isOverview]);
+
+  // Live vehicles → animated trains
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.setVehicles(vehicles, isOverview ? overviewColor : () => lineColor);
+  }, [vehicles, lineColor, isOverview]);
 
   return (
     <div
-      ref={containerRef}
-      className={fillContainer ? "absolute inset-0" : "w-full h-64 rounded-lg overflow-hidden"}
-      style={{ background: "#18181b" }}
-    />
+      className={fillContainer ? "absolute inset-0 overflow-hidden" : "relative w-full h-64 rounded-lg overflow-hidden"}
+      style={{ background: "#0a0a0e" }}
+    >
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Live chip */}
+      <div className="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-black/55 backdrop-blur-md border border-white/10 pointer-events-none select-none">
+        <span className="relative flex w-1.5 h-1.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: lineColor }} />
+          <span className="relative inline-flex rounded-full w-1.5 h-1.5" style={{ background: lineColor }} />
+        </span>
+        <span className="text-[10px] font-bold tracking-[0.18em] text-zinc-300">
+          {isOverview ? "SYSTEM LIVE" : `${vehicles.length} TRAIN${vehicles.length === 1 ? "" : "S"} LIVE`}
+        </span>
+      </div>
+
+      {/* Hover tooltip */}
+      {hover && (
+        <div
+          className="fixed z-50 pointer-events-none px-3 py-2 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 shadow-xl"
+          style={{ left: hover.x + 14, top: hover.y + 14 }}
+        >
+          <div className="text-xs font-bold text-zinc-100 leading-tight">{hover.info.title}</div>
+          <div className="text-[10px] text-zinc-400 mt-0.5">{hover.info.subtitle}</div>
+        </div>
+      )}
+    </div>
   );
 }

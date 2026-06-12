@@ -42,6 +42,7 @@ export interface Vehicle {
   branch: string;
   headsign: string;
   currentStopId: string | null;
+  updatedAt: string | null;
 }
 
 export interface TransitEvent {

@@ -91,7 +91,7 @@ export default function DashboardLayout({ stopId, stopName, lineId = "Green" }: 
         )}
 
         {/* Right: panels */}
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0 fade-rise">
 
           {/* Stop name bar */}
           <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/40 shrink-0">

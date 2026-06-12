@@ -17,3 +17,45 @@ body {
   color: var(--foreground);
   font-family: var(--font-urbanist), var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/* ── Fluid motion ─────────────────────────────────────────────────── */
+
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-rise {
+  animation: fade-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Staggered list entries: set --stagger-i per item */
+.stagger {
+  animation: fade-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--stagger-i, 0) * 35ms);
+}
+
+/* Interactive cards: lift on hover, settle on press */
+.card-fluid {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+.card-fluid:hover { transform: translateY(-2px); }
+.card-fluid:active { transform: translateY(0) scale(0.985); transition-duration: 0.08s; }
+
+/* Slim, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+::selection { background: #22c55e44; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-rise, .stagger { animation: none; }
+  .card-fluid, .card-fluid:hover, .card-fluid:active { transform: none; }
+}

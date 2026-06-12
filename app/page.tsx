@@ -41,21 +41,23 @@ function HomeContent() {
               <Breadcrumb mode={mode ?? undefined} lineId={lineId ?? undefined} />
             )}
 
-            {step === "mode" && (
-              <div className="pt-4">
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">TrackT</h1>
-                <p className="text-zinc-500 text-sm mb-6">Real-time MBTA departures & delay context.</p>
-                <ModePicker />
-              </div>
-            )}
+            <div key={step + (lineId ?? mode ?? "")} className="fade-rise">
+              {step === "mode" && (
+                <div className="pt-4">
+                  <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">TrackT</h1>
+                  <p className="text-zinc-500 text-sm mb-6">Real-time MBTA departures & delay context.</p>
+                  <ModePicker />
+                </div>
+              )}
 
-            {step === "line" && mode && (
-              <LinePicker mode={mode} />
-            )}
+              {step === "line" && mode && (
+                <LinePicker mode={mode} />
+              )}
 
-            {step === "stop" && lineId && (
-              <StopPicker lineId={lineId} />
-            )}
+              {step === "stop" && lineId && (
+                <StopPicker lineId={lineId} />
+              )}
+            </div>
           </div>
         </div>
 

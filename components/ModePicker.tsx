@@ -50,7 +50,7 @@ export default function ModePicker() {
     <div className="w-full">
       <h2 className="text-[11px] font-bold tracking-[0.2em] text-zinc-500 mb-4">SELECT MODE</h2>
       <div className="grid grid-cols-2 gap-3">
-        {MODES.map(mode => {
+        {MODES.map((mode, i) => {
           const cfg = MODE_CONFIG[mode];
           const lines = LINES_BY_MODE[mode];
           const accent = MODE_ACCENT[mode];
@@ -59,8 +59,8 @@ export default function ModePicker() {
             <button
               key={mode}
               onClick={() => router.push(`/?mode=${mode}`)}
-              className="group relative flex flex-col items-start p-5 rounded-xl border border-zinc-800 hover:border-zinc-600 transition-all text-left cursor-pointer"
-              style={{ background: bg }}
+              className="group card-fluid stagger relative flex flex-col items-start p-5 rounded-xl border border-zinc-800 hover:border-zinc-600 text-left cursor-pointer"
+              style={{ background: bg, "--stagger-i": i } as React.CSSProperties}
             >
               <div
                 className="text-2xl font-black tracking-tight mb-3 transition-opacity group-hover:opacity-90"

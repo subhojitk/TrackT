@@ -63,11 +63,12 @@ export default function StopPicker({ lineId }: Props) {
       )}
 
       <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
-        {deduped.map(stop => (
+        {deduped.map((stop, i) => (
           <button
             key={stop.id}
             onClick={() => router.push(`/stop/${lineId}/${stop.id}`)}
-            className="group flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 transition-all text-left cursor-pointer"
+            className="group card-fluid stagger flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 text-left cursor-pointer"
+            style={{ "--stagger-i": Math.min(i, 14) } as React.CSSProperties}
           >
             <span
               className="shrink-0 w-2 h-2 rounded-full"

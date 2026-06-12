@@ -7,9 +7,12 @@ const API_KEY = process.env.MBTA_API_KEY ?? "";
 
 export const runtime = "nodejs";
 
+// Overview mode streams every subway vehicle for the landing map
+const OVERVIEW_ROUTES = ["Red", "Orange", "Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Mattapan"];
+
 export async function GET(req: NextRequest) {
   const lineId = req.nextUrl.searchParams.get("route") ?? "Green";
-  const routeIds = getRouteIdsForLine(lineId).join(",");
+  const routeIds = (lineId === "overview" ? OVERVIEW_ROUTES : getRouteIdsForLine(lineId)).join(",");
   const params = new URLSearchParams({
     "filter[route]": routeIds,
     "include": "trip",
@@ -45,8 +48,9 @@ export async function GET(req: NextRequest) {
         directionId: a.direction_id,
         route,
         branch: route.replace("Green-", "") || "GL",
-        headsign: trip?.attributes?.headsign ?? "Green Line",
+        headsign: trip?.attributes?.headsign ?? route,
         currentStopId: v.relationships?.stop?.data?.id ?? null,
+        updatedAt: a.updated_at ?? null,
       } satisfies Vehicle;
     });
 
