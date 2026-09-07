@@ -1,87 +1,106 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import type { StopListItem } from "@/types/mbta";
 import { getLine } from "@/lib/lines";
+import { Accessible, ChevronRight, Search } from "./icons";
+import { EmptyState, Skeleton } from "./ui";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = (url: string) =>
+  fetch(url).then(r => {
+    if (!r.ok) throw new Error(`${r.status}`);
+    return r.json();
+  });
 
 interface Props {
   lineId: string;
 }
 
 export default function StopPicker({ lineId }: Props) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const line = getLine(lineId);
 
-  const { data: stops, isLoading } = useSWR<StopListItem[]>(
+  const { data: stops, isLoading, error } = useSWR<StopListItem[]>(
     `/api/mbta/stops?route=${lineId}&format=list`,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 300_000 }
   );
 
-  const filtered = (stops ?? []).filter(s =>
-    // Show parent stations (locationType 1) or standalone stops (locationType 0 with no parent)
-    (s.locationType === 1 || (s.locationType === 0 && !s.parentStationId)) &&
-    (query === "" || s.name.toLowerCase().includes(query.toLowerCase()))
-  );
+  // Parent stations (locationType 1) or standalone stops with no parent
+  const stations = useMemo(() => {
+    const seen = new Set<string>();
+    return (stops ?? []).filter(s => {
+      const isStation = s.locationType === 1 || (s.locationType === 0 && !s.parentStationId);
+      if (!isStation || seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+  }, [stops]);
 
-  const seen = new Set<string>();
-  const deduped = filtered.filter(s => {
-    if (seen.has(s.id)) return false;
-    seen.add(s.id);
-    return true;
-  });
+  const q = query.trim().toLowerCase();
+  const filtered = q ? stations.filter(s => s.name.toLowerCase().includes(q)) : stations;
 
   return (
-    <div className="w-full">
-      <h2 className="text-[11px] font-bold tracking-[0.2em] text-zinc-500 mb-4">SELECT STOP</h2>
+    <div>
+      <label className="relative block mb-3">
+        <span className="sr-only">Search stops</span>
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />
+        <input
+          type="search"
+          placeholder="Search stops…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          autoComplete="off"
+          className="w-full h-11 bg-surface border border-line rounded-xl pl-10 pr-4 text-[14px] text-fg placeholder:text-fg-3 focus:outline-none focus:border-line-strong focus:ring-2 focus:ring-[color:var(--accent)]/40 transition"
+        />
+      </label>
 
-      <input
-        type="text"
-        placeholder="Search stops…"
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 mb-3"
-      />
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-[12px] text-fg-3">
+          {isLoading ? "Loading stops…" : `${filtered.length} ${filtered.length === 1 ? "stop" : "stops"}${q ? " match" : ""}`}
+        </span>
+        <span className="inline-flex items-center gap-1 text-[12px] text-fg-3">
+          <Accessible size={13} /> Accessible
+        </span>
+      </div>
 
       {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-12 bg-zinc-800/50 rounded-lg animate-pulse" />
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[52px] rounded-xl" />)}
+        </div>
+      )}
+
+      {!isLoading && error && (
+        <EmptyState className="card">Couldn&apos;t load stops for this line. Check your connection and try again.</EmptyState>
+      )}
+
+      {!isLoading && !error && filtered.length === 0 && (
+        <EmptyState className="card">{q ? `No stops match “${query}”.` : "No stops found for this line."}</EmptyState>
+      )}
+
+      {!isLoading && filtered.length > 0 && (
+        <ul className="flex flex-col gap-1.5" role="list">
+          {filtered.map((stop, i) => (
+            <li key={stop.id}>
+              <Link
+                href={`/stop/${lineId}/${stop.id}`}
+                className="group card card-fluid stagger flex items-center gap-3.5 px-4 py-3 hover:border-line-strong hover:bg-surface-2 focus-ring"
+                style={{ "--stagger-i": Math.min(i, 14) } as CSSProperties}
+              >
+                <span className="relative flex items-center justify-center w-3 h-3 shrink-0">
+                  <span className="absolute inset-0 rounded-full" style={{ background: line?.color ?? "#22c55e" }} />
+                  <span className="relative w-1.5 h-1.5 rounded-full bg-white" />
+                </span>
+                <span className="flex-1 text-[14px] font-medium text-fg-2 group-hover:text-fg truncate">{stop.name}</span>
+                {stop.accessible && <Accessible size={14} className="text-fg-3 shrink-0" aria-label="Accessible" />}
+                <ChevronRight size={16} className="text-fg-3/60 group-hover:text-fg-2 transition-colors shrink-0" />
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-
-      {!isLoading && deduped.length === 0 && (
-        <div className="text-center text-zinc-600 text-sm py-8 tracking-widest">
-          {query ? "NO STOPS MATCH" : "NO STOPS FOUND"}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
-        {deduped.map((stop, i) => (
-          <button
-            key={stop.id}
-            onClick={() => router.push(`/stop/${lineId}/${stop.id}`)}
-            className="group card-fluid stagger flex items-center gap-3 px-4 py-3 rounded-lg border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 text-left cursor-pointer"
-            style={{ "--stagger-i": Math.min(i, 14) } as React.CSSProperties}
-          >
-            <span
-              className="shrink-0 w-2 h-2 rounded-full"
-              style={{ backgroundColor: line?.color ?? "#22c55e" }}
-            />
-            <span className="flex-1 text-sm text-zinc-200 group-hover:text-zinc-100">{stop.name}</span>
-            {stop.accessible && (
-              <span className="text-[10px] text-zinc-600" title="Accessible">♿</span>
-            )}
-            <span className="text-zinc-600 group-hover:text-zinc-400 transition-colors text-sm">›</span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

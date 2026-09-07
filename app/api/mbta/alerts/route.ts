@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAlerts } from "@/lib/mbta-api";
 import { getRouteIdsForLine } from "@/lib/lines";
+import { errorMessage } from "@/lib/jsonapi";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(alerts, {
       headers: { "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 502 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: errorMessage(e) }, { status: 502 });
   }
 }

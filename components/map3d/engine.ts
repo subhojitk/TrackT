@@ -13,7 +13,34 @@ const STOP_Y = 0.7;
 const TRAIN_Y = 1.1;
 
 const MAX_TRAIN_SPEED = 3.5; // world units/s ≈ 156 mph — sanity cap for inference
-const EXTRAPOLATE_CAP = 14; // seconds to dead-reckon past the last API update
+const CRAWL_SPEED = 0.45;    // ≈ 20 mph — minimum display speed for in-transit trains
+const STALE_CAP = 20;        // seconds of dead-reckoning before the carrot stops advancing
+
+// On-screen size floors so markers stay legible at every zoom
+const TRAIN_MIN_PX = 16;     // train length
+const STOP_MIN_PX = 5;       // stop ring radius
+const TRAIN_LENGTH = 2.1;
+const STOP_RING_RADIUS = 1.45;
+
+// Camera limits
+const MIN_DISTANCE = 25;
+const MAX_DISTANCE = 7000;
+
+/**
+ * Draw order bands. Depth testing is disabled on every flat layer, so this
+ * ordering alone decides what covers what — no z-fighting at any distance.
+ *   tiles: -20 … 13 (see TileLayer)
+ */
+const ORDER = {
+  ground: -30,
+  routeHalo: 30,
+  routeCore: 31,
+  stopRing: 35,
+  stopCore: 36,
+  currentStop: 37,
+  trainGlow: 39,
+  train: 40,
+} as const;
 
 export interface HoverInfo {
   kind: "train" | "stop";
@@ -31,72 +58,122 @@ export interface StopDatum {
 interface EngineOptions {
   onStopClick?: (stopId: string) => void;
   onHover?: (info: HoverInfo | null, x: number, y: number) => void;
+  /** Fired when the WebGL context is lost and cannot be restored. */
+  onError?: (message: string) => void;
+}
+
+// ── Polyline helpers ────────────────────────────────────────────────────
+
+function projectShape(latLons: [number, number][]): THREE.Vector3[] {
+  const pts: THREE.Vector3[] = [];
+  let prev: THREE.Vector3 | null = null;
+  for (const [lat, lon] of latLons) {
+    const { x, z } = project(lat, lon);
+    const p = new THREE.Vector3(x, TRAIN_Y, z);
+    if (prev && prev.distanceToSquared(p) < 1e-6) continue;
+    pts.push(p);
+    prev = p;
+  }
+  return pts;
+}
+
+/**
+ * Iterative Douglas–Peucker on the xz plane. Raw MBTA shapes carry thousands
+ * of sub-pixel segments whose overlapping translucent quads shimmer while the
+ * camera moves — simplify before building display geometry.
+ */
+function simplifyXZ(points: THREE.Vector3[], tolerance: number): THREE.Vector3[] {
+  if (points.length < 3) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = keep[points.length - 1] = 1;
+  const tol2 = tolerance * tolerance;
+  const stack: [number, number][] = [[0, points.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const ax = points[a].x, az = points[a].z;
+    const dx = points[b].x - ax, dz = points[b].z - az;
+    const len2 = dx * dx + dz * dz;
+    let maxD = 0, idx = -1;
+    for (let i = a + 1; i < b; i++) {
+      const px = points[i].x - ax, pz = points[i].z - az;
+      let d: number;
+      if (len2 === 0) {
+        d = px * px + pz * pz;
+      } else {
+        const t = THREE.MathUtils.clamp((px * dx + pz * dz) / len2, 0, 1);
+        const ex = px - t * dx, ez = pz - t * dz;
+        d = ex * ex + ez * ez;
+      }
+      if (d > maxD) { maxD = d; idx = i; }
+    }
+    if (maxD > tol2 && idx > 0) {
+      keep[idx] = 1;
+      stack.push([a, idx], [idx, b]);
+    }
+  }
+  return points.filter((_, i) => keep[i] === 1);
 }
 
 // ── Arc-length parameterized polyline ───────────────────────────────────
 
 class TrackLine {
-  readonly points: THREE.Vector3[] = [];
+  points: THREE.Vector3[] = [];
   private cum: number[] = [];
   total = 0;
 
-  constructor(latLons: [number, number][]) {
+  constructor(points: THREE.Vector3[]) {
     let prev: THREE.Vector3 | null = null;
-    for (const [lat, lon] of latLons) {
-      const { x, z } = project(lat, lon);
-      const p = new THREE.Vector3(x, TRAIN_Y, z);
-      if (prev && prev.distanceToSquared(p) < 1e-6) continue;
+    for (const p of points) {
       this.points.push(p);
       this.cum.push(prev ? this.total += prev.distanceTo(p) : 0);
       prev = p;
     }
   }
 
-  private locate(s: number): { i: number; t: number } {
-    const clamped = THREE.MathUtils.clamp(s, 0, this.total);
-    let lo = 0, hi = this.cum.length - 1;
-    while (lo < hi - 1) {
-      const mid = (lo + hi) >> 1;
-      if (this.cum[mid] <= clamped) lo = mid; else hi = mid;
+  private segmentAt(s: number): number {
+    let lo = 0, hi = this.cum.length - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.cum[mid] <= s) lo = mid; else hi = mid - 1;
     }
-    const segLen = this.cum[hi] - this.cum[lo];
-    return { i: lo, t: segLen > 0 ? (clamped - this.cum[lo]) / segLen : 0 };
+    return lo;
   }
 
   pointAt(s: number, out: THREE.Vector3): THREE.Vector3 {
-    if (this.points.length === 0) return out.set(0, TRAIN_Y, 0);
-    if (this.points.length === 1) return out.copy(this.points[0]);
-    const { i, t } = this.locate(s);
-    return out.copy(this.points[i]).lerp(this.points[i + 1], t);
+    s = THREE.MathUtils.clamp(s, 0, this.total);
+    const i = this.segmentAt(s);
+    const a = this.points[i], b = this.points[i + 1];
+    const len = this.cum[i + 1] - this.cum[i];
+    const t = len > 0 ? (s - this.cum[i]) / len : 0;
+    return out.lerpVectors(a, b, t);
   }
 
   tangentAt(s: number, out: THREE.Vector3): THREE.Vector3 {
-    if (this.points.length < 2) return out.set(0, 0, 1);
-    const { i } = this.locate(s);
-    return out.copy(this.points[i + 1]).sub(this.points[i]).normalize();
+    s = THREE.MathUtils.clamp(s, 0, this.total);
+    const i = this.segmentAt(s);
+    return out.subVectors(this.points[i + 1], this.points[i]).normalize();
   }
 
-  /** Closest arc-length position to a world point (brute force over segments). */
+  /** Nearest arc-length position to a world point (projected onto xz). */
   nearest(p: THREE.Vector3): { s: number; dist: number } {
     let bestS = 0, bestD = Infinity;
-    const ab = new THREE.Vector3(), ap = new THREE.Vector3(), proj = new THREE.Vector3();
+    const ab = new THREE.Vector3(), ap = new THREE.Vector3();
     for (let i = 0; i < this.points.length - 1; i++) {
       const a = this.points[i], b = this.points[i + 1];
-      ab.copy(b).sub(a);
-      const len2 = ab.lengthSq();
-      const t = len2 > 0 ? THREE.MathUtils.clamp(ap.copy(p).sub(a).dot(ab) / len2, 0, 1) : 0;
-      proj.copy(a).addScaledVector(ab, t);
-      const d = proj.distanceToSquared(p);
+      ab.subVectors(b, a);
+      ap.subVectors(p, a);
+      const len2 = ab.x * ab.x + ab.z * ab.z;
+      const t = len2 > 0 ? THREE.MathUtils.clamp((ap.x * ab.x + ap.z * ab.z) / len2, 0, 1) : 0;
+      const dx = ap.x - ab.x * t, dz = ap.z - ab.z * t;
+      const d = dx * dx + dz * dz;
       if (d < bestD) {
         bestD = d;
-        bestS = this.cum[i] + Math.sqrt(len2) * t;
+        bestS = this.cum[i] + t * (this.cum[i + 1] - this.cum[i]);
       }
     }
     return { s: bestS, dist: Math.sqrt(bestD) };
   }
 }
-
-// ── Per-vehicle animation state ─────────────────────────────────────────
 
 interface TrainState {
   group: THREE.Group;
@@ -107,6 +184,8 @@ interface TrainState {
   s: number;          // animated arc position
   sTarget: number;    // last API arc position
   vel: number;        // inferred world units/s along the track (signed)
+  dispSpeed: number;  // animated display speed (signed, world units/s)
+  dirSign: 1 | -1;    // direction of travel along the track
   tUpdate: number;    // engine clock at last API update
   apiUpdatedAt: number | null;
   raw: THREE.Vector3; // raw projected position (off-route fallback)
@@ -158,21 +237,30 @@ export class MapEngine {
   private stopIds: string[] = [];
   private stopNames = new Map<string, string>();
   private stopMesh: THREE.InstancedMesh | null = null;
+  private stopRingMesh: THREE.InstancedMesh | null = null;
+  private stopBase: THREE.Vector3[] = [];
+  private lastStopCam = new THREE.Vector3(Infinity, Infinity, Infinity);
   private currentStopGroup: THREE.Group | null = null;
   private pulseRing: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null = null;
 
-  // shared resources
+  // shared resources (never disposed by clearGroup)
   private glowTexture = makeGlowTexture();
-  private trainBodyGeo = new THREE.BoxGeometry(0.62, 0.5, 2.1);
+  private trainBodyGeo = new THREE.BoxGeometry(0.62, 0.5, TRAIN_LENGTH);
   private trainTipGeo = new THREE.BoxGeometry(0.5, 0.52, 0.42);
   private stopGeo = new THREE.CylinderGeometry(1, 1, 0.45, 20);
+  private stopRingGeo = new THREE.RingGeometry(1.0, STOP_RING_RADIUS, 28);
+  private sharedGeometries: Set<THREE.BufferGeometry>;
 
   // fly-to tween
   private fly: {
     t0: number; dur: number;
     fromPos: THREE.Vector3; toPos: THREE.Vector3;
     fromTarget: THREE.Vector3; toTarget: THREE.Vector3;
+    arc: boolean;
   } | null = null;
+
+  /** Where "reset view" returns to: the last fitted route bbox or fly-to stop. */
+  private home: { target: THREE.Vector3; pos: THREE.Vector3 } | null = null;
 
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
@@ -189,40 +277,48 @@ export class MapEngine {
   constructor(container: HTMLElement, opts: EngineOptions = {}) {
     this.container = container;
     this.opts = opts;
+    this.sharedGeometries = new Set([this.trainBodyGeo, this.trainTipGeo, this.stopGeo, this.stopRingGeo]);
 
     const w = container.clientWidth || 1;
     const h = container.clientHeight || 1;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h);
     this.renderer.domElement.style.display = "block";
+    this.renderer.domElement.style.touchAction = "none";
+    this.renderer.domElement.setAttribute("aria-label", "Interactive network map");
     container.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(0x0a0a0e);
-    this.scene.fog = new THREE.FogExp2(0x0a0a0e, 0.00011);
+    this.scene.background = new THREE.Color(0x0b0c10);
+    this.scene.fog = new THREE.FogExp2(0x0b0c10, 0.00009);
 
-    this.camera = new THREE.PerspectiveCamera(55, w / h, 1, 60000);
+    this.camera = new THREE.PerspectiveCamera(50, w / h, 1, 60000);
     this.camera.position.set(0, 380, 230);
 
     this.controls = new MapControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.08;
+    this.controls.dampingFactor = 0.09;
     this.controls.zoomToCursor = true;
     this.controls.screenSpacePanning = false;
-    this.controls.minDistance = 18;
-    this.controls.maxDistance = 6500;
-    this.controls.maxPolarAngle = 1.25; // keep camera above the ground
+    this.controls.minDistance = MIN_DISTANCE;
+    this.controls.maxDistance = MAX_DISTANCE;
+    this.controls.maxPolarAngle = 1.12; // ≈ 64° — keeps the horizon (and empty ground) off screen
     this.controls.target.set(0, 0, 0);
 
-    // Base ground plane under the tiles
+    // Base ground plane under the tiles. Never writes depth: the flat layers
+    // above are ordered purely by renderOrder.
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200000, 200000),
-      new THREE.MeshBasicMaterial({ color: 0x0c0c10 })
+      new THREE.MeshBasicMaterial({ color: 0x0d0e12, depthWrite: false, depthTest: false })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.5;
-    ground.renderOrder = -1;
+    ground.renderOrder = ORDER.ground;
     this.scene.add(ground);
 
     this.scene.add(new THREE.HemisphereLight(0x95a3c4, 0x0a0a12, 1.4));
@@ -230,14 +326,16 @@ export class MapEngine {
     sun.position.set(300, 600, -200);
     this.scene.add(sun);
 
-    this.tiles.group.renderOrder = 0;
     this.scene.add(this.tiles.group, this.routesGroup, this.stopsGroup, this.trainsGroup);
 
     const dom = this.renderer.domElement;
     dom.addEventListener("pointermove", this.onPointerMove);
-    dom.addEventListener("pointerdown", this.onPointerDown);
+    // capture phase so the fly tween is cancelled before MapControls sees the gesture
+    dom.addEventListener("pointerdown", this.onPointerDown, true);
+    dom.addEventListener("wheel", this.onWheelCapture, { capture: true, passive: true });
     dom.addEventListener("pointerup", this.onPointerUp);
     dom.addEventListener("pointerleave", this.onPointerLeave);
+    dom.addEventListener("webglcontextlost", this.onContextLost);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -257,12 +355,13 @@ export class MapEngine {
     const bbox = new THREE.Box3();
     for (const [key, latLons] of Object.entries(shapes)) {
       if (latLons.length < 2) continue;
-      const track = new TrackLine(latLons);
+      const raw = projectShape(latLons);
+      const track = new TrackLine(simplifyXZ(raw, 0.25));
       if (track.points.length < 2) continue;
       this.tracks.set(key, track);
 
       const positions: number[] = [];
-      for (const p of track.points) {
+      for (const p of simplifyXZ(raw, 1.0)) {
         positions.push(p.x, ROUTE_Y, p.z);
         bbox.expandByPoint(p);
       }
@@ -274,23 +373,25 @@ export class MapEngine {
         color: new THREE.Color(color).getHex(),
         linewidth: 3.5,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.95,
+        depthTest: false,
         depthWrite: false,
       });
       const halo = new LineMaterial({
         color: new THREE.Color(color).getHex(),
-        linewidth: 11,
+        linewidth: 9,
         transparent: true,
-        opacity: 0.13,
+        opacity: 0.12,
         blending: THREE.AdditiveBlending,
+        depthTest: false,
         depthWrite: false,
       });
       this.lineMaterials.push(core, halo);
 
       const coreLine = new Line2(geo, core);
       const haloLine = new Line2(geo, halo);
-      coreLine.renderOrder = 31;
-      haloLine.renderOrder = 30;
+      coreLine.renderOrder = ORDER.routeCore;
+      haloLine.renderOrder = ORDER.routeHalo;
       coreLine.computeLineDistances();
       haloLine.computeLineDistances();
       this.routesGroup.add(haloLine, coreLine);
@@ -315,25 +416,41 @@ export class MapEngine {
   setStops(stops: StopDatum[], color: string, currentStopId?: string) {
     this.clearGroup(this.stopsGroup);
     this.stopMesh = null;
+    this.stopRingMesh = null;
+    this.stopBase = [];
     this.currentStopGroup = null;
     this.pulseRing = null;
     this.stopIds = [];
     this.stopNames.clear();
+    this.lastStopCam.set(Infinity, Infinity, Infinity);
 
     if (stops.length > 0) {
-      const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: 0.95 });
-      const inst = new THREE.InstancedMesh(this.stopGeo, mat, stops.length);
-      const m = new THREE.Matrix4();
-      stops.forEach((stop, i) => {
+      // Transit-map style: white core + line-colored ring, screen-size-scaled per frame
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
+      const core = new THREE.InstancedMesh(this.stopGeo, coreMat, stops.length);
+      core.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(color),
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const ring = new THREE.InstancedMesh(this.stopRingGeo, ringMat, stops.length);
+      ring.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      for (const stop of stops) {
         const { x, z } = project(stop.lat, stop.lon);
-        m.makeScale(1.5, 1, 1.5).setPosition(x, STOP_Y, z);
-        inst.setMatrixAt(i, m);
+        this.stopBase.push(new THREE.Vector3(x, STOP_Y, z));
         this.stopIds.push(stop.id);
         if (stop.name) this.stopNames.set(stop.id, stop.name);
-      });
-      inst.renderOrder = 35;
-      this.stopsGroup.add(inst);
-      this.stopMesh = inst;
+      }
+      core.renderOrder = ORDER.stopCore;
+      ring.renderOrder = ORDER.stopRing;
+      this.stopsGroup.add(ring, core);
+      this.stopMesh = core;
+      this.stopRingMesh = ring;
+      this.updateStopScales(true);
     }
 
     if (currentStopId) {
@@ -345,25 +462,64 @@ export class MapEngine {
 
         const puck = new THREE.Mesh(
           this.stopGeo,
-          new THREE.MeshBasicMaterial({ color: 0xffffff })
+          new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false })
         );
         puck.scale.set(2.1, 1.4, 2.1);
-        puck.renderOrder = 36;
+        puck.renderOrder = ORDER.currentStop;
+
+        const halo = new THREE.Mesh(
+          this.stopRingGeo,
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(color), side: THREE.DoubleSide, depthTest: false, depthWrite: false })
+        );
+        halo.rotation.x = -Math.PI / 2;
+        halo.scale.setScalar(2.3);
+        halo.position.y = 0.05;
+        halo.renderOrder = ORDER.currentStop;
 
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(1, 1.18, 48),
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false })
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false })
         );
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.3;
-        ring.renderOrder = 36;
+        ring.renderOrder = ORDER.currentStop;
 
-        group.add(puck, ring);
+        group.add(halo, puck, ring);
         this.stopsGroup.add(group);
         this.currentStopGroup = group;
         this.pulseRing = ring as THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
       }
     }
+  }
+
+  /** World units covered by one screen pixel at the given camera distance. */
+  private unitsPerPixel(dist: number): number {
+    const h = this.container.clientHeight || 1;
+    return (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)) / h;
+  }
+
+  /** Scale stop markers so they keep a legible on-screen size at any zoom. */
+  private updateStopScales(force = false) {
+    const core = this.stopMesh, ring = this.stopRingMesh;
+    if (!core || !ring || this.stopBase.length === 0) return;
+    const cam = this.camera.position;
+    if (!force && this.lastStopCam.distanceToSquared(cam) < 0.25) return;
+    this.lastStopCam.copy(cam);
+    const m = new THREE.Matrix4();
+    const upright = new THREE.Quaternion();
+    const flat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+    const sc = new THREE.Vector3();
+    for (let i = 0; i < this.stopBase.length; i++) {
+      const p = this.stopBase[i];
+      const upp = this.unitsPerPixel(p.distanceTo(cam));
+      const k = THREE.MathUtils.clamp((STOP_MIN_PX * upp) / STOP_RING_RADIUS, 1.2, 40);
+      m.compose(p, upright, sc.set(0.8 * k, 1, 0.8 * k));
+      core.setMatrixAt(i, m);
+      m.compose(p, flat, sc.set(k, k, 1));
+      ring.setMatrixAt(i, m);
+    }
+    core.instanceMatrix.needsUpdate = true;
+    ring.instanceMatrix.needsUpdate = true;
   }
 
   /**
@@ -411,6 +567,7 @@ export class MapEngine {
         if (dt > 0.5) {
           const inferred = (hit.s - st.sTarget) / dt;
           st.vel = THREE.MathUtils.clamp(inferred, -MAX_TRAIN_SPEED, MAX_TRAIN_SPEED);
+          if (Math.abs(st.vel) > 0.05) st.dirSign = st.vel > 0 ? 1 : -1;
         }
         if (v.status === "STOPPED_AT") st.vel = 0;
         st.sTarget = hit.s;
@@ -418,9 +575,10 @@ export class MapEngine {
       }
       st.tUpdate = now;
       st.data = v;
-      st.body.material.color.set(colorFor(v.route));
-      st.body.material.emissive.set(colorFor(v.route));
-      (st.glow.material as THREE.SpriteMaterial).color.set(colorFor(v.route));
+      const color = colorFor(v.route);
+      st.body.material.color.set(color);
+      st.body.material.emissive.set(color);
+      (st.glow.material as THREE.SpriteMaterial).color.set(color);
     }
 
     for (const [id, st] of this.trains) {
@@ -442,14 +600,14 @@ export class MapEngine {
       metalness: 0.15,
     });
     const body = new THREE.Mesh(this.trainBodyGeo, bodyMat);
-    body.renderOrder = 40;
+    body.renderOrder = ORDER.train;
 
     const tip = new THREE.Mesh(
       this.trainTipGeo,
       new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.4 })
     );
     tip.position.z = 1.05;
-    tip.renderOrder = 40;
+    tip.renderOrder = ORDER.train;
 
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: this.glowTexture,
@@ -457,10 +615,11 @@ export class MapEngine {
       transparent: true,
       opacity: 0.5,
       blending: THREE.AdditiveBlending,
+      depthTest: false,
       depthWrite: false,
     }));
-    glow.scale.setScalar(7);
-    glow.renderOrder = 39;
+    glow.scale.setScalar(4);
+    glow.renderOrder = ORDER.trainGlow;
 
     group.add(glow, body, tip);
     group.position.y = TRAIN_Y;
@@ -471,6 +630,8 @@ export class MapEngine {
       group, body, tip, glow,
       track: null,
       s: 0, sTarget: 0, vel: 0,
+      dispSpeed: 0,
+      dirSign: (v.directionId === 0 ? 1 : -1) as 1 | -1,
       tUpdate: this.nowSec(),
       apiUpdatedAt: null,
       raw: new THREE.Vector3(0, TRAIN_Y, 0),
@@ -493,20 +654,39 @@ export class MapEngine {
     const { x, z } = project(lat, lon);
     const target = new THREE.Vector3(x, 0, z);
     const pos = target.clone().add(new THREE.Vector3(0, height, height * 0.55));
-    this.startFly(target, pos, duration);
+    this.home = { target: target.clone(), pos: pos.clone() };
+    this.startFly(target, pos, duration, true);
   }
 
   private flyToBox(bbox: THREE.Box3, duration = 1.8) {
     const center = bbox.getCenter(new THREE.Vector3());
     center.y = 0;
     const size = bbox.getSize(new THREE.Vector3());
-    const extent = Math.max(size.x, size.z, 30);
-    const height = THREE.MathUtils.clamp(extent * 0.95, 60, 5800);
-    const pos = center.clone().add(new THREE.Vector3(0, height, height * 0.5));
-    this.startFly(center, pos, duration);
+    const aspect = this.camera.aspect || 1;
+    // Fit the wider axis, accounting for a portrait viewport
+    const extent = Math.max(size.x / Math.min(aspect, 1), size.z, 30);
+    const height = THREE.MathUtils.clamp(extent * 0.95, 60, MAX_DISTANCE * 0.85);
+    const pos = center.clone().add(new THREE.Vector3(0, height, height * 0.45));
+    this.home = { target: center.clone(), pos: pos.clone() };
+    this.startFly(center, pos, duration, true);
   }
 
-  private startFly(target: THREE.Vector3, pos: THREE.Vector3, duration: number) {
+  /** Dolly toward/away from the orbit target. factor < 1 zooms in. */
+  zoomBy(factor: number, duration = 0.4) {
+    const target = this.controls.target.clone();
+    const offset = this.camera.position.clone().sub(target);
+    const dist = THREE.MathUtils.clamp(offset.length() * factor, MIN_DISTANCE, MAX_DISTANCE);
+    offset.setLength(dist);
+    this.startFly(target, target.clone().add(offset), duration, false);
+  }
+
+  /** Return to the last fitted view (the route bbox or the selected stop). */
+  resetView(duration = 1.2) {
+    if (!this.home) return;
+    this.startFly(this.home.target.clone(), this.home.pos.clone(), duration, true);
+  }
+
+  private startFly(target: THREE.Vector3, pos: THREE.Vector3, duration: number, arc: boolean) {
     this.fly = {
       t0: this.nowSec(),
       dur: duration,
@@ -514,6 +694,7 @@ export class MapEngine {
       toPos: pos,
       fromTarget: this.controls.target.clone(),
       toTarget: target,
+      arc,
     };
   }
 
@@ -531,41 +712,67 @@ export class MapEngine {
     this.lastMs = nowMs;
     const now = (nowMs - this.startMs) / 1000;
 
-    // Fly tween (user input cancels it via pointerdown)
+    // Fly tween (user input cancels it via pointerdown/wheel)
     if (this.fly) {
       const f = this.fly;
       const t = THREE.MathUtils.clamp((now - f.t0) / f.dur, 0, 1);
       const e = easeInOutCubic(t);
       this.controls.target.lerpVectors(f.fromTarget, f.toTarget, e);
       this.camera.position.lerpVectors(f.fromPos, f.toPos, e);
-      // gentle altitude arc so long hops feel like flight
-      const hop = f.fromPos.distanceTo(f.toPos) * 0.12 * Math.sin(Math.PI * e);
-      this.camera.position.y += hop;
+      if (f.arc) {
+        // gentle altitude arc so long hops feel like flight
+        const hop = f.fromPos.distanceTo(f.toPos) * 0.12 * Math.sin(Math.PI * e);
+        this.camera.position.y += hop;
+      }
+      this.camera.lookAt(this.controls.target);
       if (t >= 1) this.fly = null;
+    } else {
+      // damped controls own the camera only when no tween is active —
+      // running both each frame makes them fight and the view jitters
+      this.controls.update();
     }
-    this.controls.update();
 
     // Trains
     for (const st of this.trains.values()) {
+      const stopped = st.data.status === "STOPPED_AT";
       st.appear = Math.min(1, st.appear + dt * 2);
       const distToCam = st.group.position.distanceTo(this.camera.position);
-      const scale = THREE.MathUtils.clamp(distToCam * 0.011, 1.1, 15) * easeInOutCubic(st.appear);
-      st.group.scale.setScalar(Math.max(scale, 0.001));
+      const upp = this.unitsPerPixel(distToCam);
+      const rawScale = THREE.MathUtils.clamp((TRAIN_MIN_PX * upp) / TRAIN_LENGTH, 1.0, 60);
+      st.group.scale.setScalar(Math.max(rawScale * easeInOutCubic(st.appear), 0.001));
 
       if (st.track) {
-        const tSince = Math.min(now - st.tUpdate, EXTRAPOLATE_CAP);
-        const predicted = THREE.MathUtils.clamp(st.sTarget + st.vel * tSince, 0, st.track.total);
-        st.s = THREE.MathUtils.damp(st.s, predicted, 1.9, dt);
+        const tSince = now - st.tUpdate;
+        // "Carrot": dead-reckoned true position; stops advancing once data goes stale
+        const carrot = THREE.MathUtils.clamp(
+          st.sTarget + st.vel * Math.min(tSince, STALE_CAP), 0, st.track.total);
+        const err = (carrot - st.s) * st.dirSign;
+
+        // Speed controller: cruise at the inferred speed floored at a crawl,
+        // catch up when behind the carrot, ease to a creep (never reverse) when ahead
+        let ctrl: number;
+        if (stopped) {
+          ctrl = err > 1.5 ? Math.min(0.5 * err, MAX_TRAIN_SPEED * 0.7) : 0;
+        } else {
+          const cruise = Math.max(Math.abs(st.vel), CRAWL_SPEED);
+          const minCreep = err < -5 ? 0 : CRAWL_SPEED * 0.3;
+          ctrl = THREE.MathUtils.clamp(cruise + 0.12 * err, minCreep, MAX_TRAIN_SPEED);
+        }
+        st.dispSpeed = THREE.MathUtils.damp(st.dispSpeed, ctrl * st.dirSign, 3, dt);
+        st.s = THREE.MathUtils.clamp(st.s + st.dispSpeed * dt, 0, st.track.total);
         st.track.pointAt(st.s, this.v1);
         st.group.position.copy(this.v1);
 
-        st.track.tangentAt(st.s, this.v2);
-        const dir = st.vel !== 0 ? Math.sign(st.vel) : (st.data.directionId === 1 ? 1 : -1);
-        const targetYaw = Math.atan2(this.v2.x * dir, this.v2.z * dir);
-        let delta = targetYaw - st.yaw;
-        while (delta > Math.PI) delta -= 2 * Math.PI;
-        while (delta < -Math.PI) delta += 2 * Math.PI;
-        st.yaw += delta * Math.min(1, dt * 5);
+        // Heading follows actual motion, with hysteresis so dwelling trains don't spin
+        if (Math.abs(st.dispSpeed) > 0.05) {
+          st.track.tangentAt(st.s, this.v2);
+          const dir = Math.sign(st.dispSpeed);
+          const targetYaw = Math.atan2(this.v2.x * dir, this.v2.z * dir);
+          let delta = targetYaw - st.yaw;
+          while (delta > Math.PI) delta -= 2 * Math.PI;
+          while (delta < -Math.PI) delta += 2 * Math.PI;
+          st.yaw += delta * Math.min(1, dt * 5);
+        }
         st.group.rotation.y = st.yaw;
       } else {
         st.group.position.x = THREE.MathUtils.damp(st.group.position.x, st.raw.x, 1.9, dt);
@@ -573,11 +780,13 @@ export class MapEngine {
         st.group.rotation.y = Math.PI - THREE.MathUtils.degToRad(st.data.bearing || 0);
       }
 
-      const stopped = st.data.status === "STOPPED_AT";
-      (st.glow.material as THREE.SpriteMaterial).opacity = stopped
-        ? 0.3 + 0.12 * Math.sin(now * 2.4)
-        : 0.5;
+      // Dim the glow at far zoom so overlapping branches don't bloom into blobs
+      const glowDim = 1 - 0.55 * THREE.MathUtils.smoothstep(rawScale, 20, 60);
+      (st.glow.material as THREE.SpriteMaterial).opacity =
+        (stopped ? 0.3 + 0.12 * Math.sin(now * 2.4) : 0.5) * glowDim;
     }
+
+    this.updateStopScales();
 
     // Current-stop pulse
     if (this.pulseRing && this.currentStopGroup) {
@@ -586,7 +795,8 @@ export class MapEngine {
       this.pulseRing.scale.setScalar(s);
       this.pulseRing.material.opacity = 0.75 * (1 - easeInOutCubic(t));
       const camDist = this.currentStopGroup.position.distanceTo(this.camera.position);
-      this.currentStopGroup.scale.setScalar(THREE.MathUtils.clamp(camDist * 0.004, 0.8, 6));
+      const upp = this.unitsPerPixel(camDist);
+      this.currentStopGroup.scale.setScalar(THREE.MathUtils.clamp((7 * upp) / 2.1, 0.8, 30));
     }
 
     // Tile streaming (throttled)
@@ -600,23 +810,10 @@ export class MapEngine {
   };
 
   private refreshTiles() {
+    // Anchor coverage on the orbit target — the frustum bbox explodes when the
+    // view tilts, which left foreground gaps and made tiles pop during pans
     const height = Math.max(this.camera.position.y, 5);
-    const corners: [number, number][] = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    const hit = this.v1;
-    for (const [nx, ny] of corners) {
-      this.raycaster.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
-      const got = this.raycaster.ray.intersectPlane(plane, hit);
-      const maxReach = height * 5;
-      if (!got || hit.distanceTo(this.camera.position) > maxReach) {
-        // grazing ray: clamp to a point ahead of the camera
-        hit.copy(this.raycaster.ray.direction).multiplyScalar(maxReach).add(this.camera.position);
-      }
-      minX = Math.min(minX, hit.x); maxX = Math.max(maxX, hit.x);
-      minZ = Math.min(minZ, hit.z); maxZ = Math.max(maxZ, hit.z);
-    }
-    this.tiles.cover(minX, maxX, minZ, maxZ, height);
+    this.tiles.cover(this.controls.target.x, this.controls.target.z, height);
   }
 
   // ── Picking ───────────────────────────────────────────────────────────
@@ -633,9 +830,15 @@ export class MapEngine {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const trainHits = this.raycaster.intersectObjects(this.trainsGroup.children, true);
     for (const h of trainHits) {
+      if (h.object instanceof THREE.Sprite) continue; // glow halo isn't a hit target
       let o: THREE.Object3D | null = h.object;
       while (o && !o.userData.vehicleId) o = o.parent;
       if (o?.userData.vehicleId) return { kind: "train", id: o.userData.vehicleId };
+    }
+    if (this.stopRingMesh) {
+      const stopHits = this.raycaster.intersectObject(this.stopRingMesh);
+      const idx = stopHits[0]?.instanceId;
+      if (idx !== undefined && this.stopIds[idx]) return { kind: "stop", id: this.stopIds[idx] };
     }
     if (this.stopMesh) {
       const stopHits = this.raycaster.intersectObject(this.stopMesh);
@@ -648,6 +851,7 @@ export class MapEngine {
   private onPointerMove = (e: PointerEvent) => {
     this.setPointer(e);
     if (!this.opts.onHover) return;
+    if (this.pointerDownAt) return; // dragging the map — no hover churn
     const hit = this.pick();
     if (!hit) {
       this.renderer.domElement.style.cursor = "";
@@ -660,7 +864,7 @@ export class MapEngine {
       if (!st) return;
       const v = st.data;
       const mph = v.speed !== null ? Math.round(v.speed) : Math.round(Math.abs(st.vel) / WORLD_SCALE * 2.237);
-      const moving = v.status === "STOPPED_AT" ? "Stopped" : `${mph} mph`;
+      const moving = v.status === "STOPPED_AT" ? "Stopped at station" : `${mph} mph`;
       this.opts.onHover(
         { kind: "train", title: `${v.branch} · ${v.headsign}`, subtitle: moving },
         e.clientX, e.clientY
@@ -678,6 +882,10 @@ export class MapEngine {
     this.pointerDownAt = { x: e.clientX, y: e.clientY };
   };
 
+  private onWheelCapture = () => {
+    this.fly = null; // user takes over the camera
+  };
+
   private onPointerUp = (e: PointerEvent) => {
     const down = this.pointerDownAt;
     this.pointerDownAt = null;
@@ -688,7 +896,13 @@ export class MapEngine {
   };
 
   private onPointerLeave = () => {
+    this.pointerDownAt = null;
     this.opts.onHover?.(null, 0, 0);
+  };
+
+  private onContextLost = (e: Event) => {
+    e.preventDefault();
+    this.opts.onError?.("The map's graphics context was lost.");
   };
 
   // ── Plumbing ──────────────────────────────────────────────────────────
@@ -706,23 +920,20 @@ export class MapEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.updateLineResolution();
+    this.lastStopCam.set(Infinity, Infinity, Infinity); // pixel sizes changed
   }
 
+  /** Remove and dispose everything in a group, keeping shared geometries alive. */
   private clearGroup(group: THREE.Group) {
-    for (const child of [...group.children]) {
-      group.remove(child);
-      const mesh = child as THREE.Mesh;
-      if (mesh.geometry && mesh.geometry !== this.stopGeo) mesh.geometry.dispose();
+    const disposeObject = (obj: THREE.Object3D) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry && !this.sharedGeometries.has(mesh.geometry)) mesh.geometry.dispose();
       const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
       for (const m of mats) m.dispose();
-      if ((child as THREE.Group).children?.length) {
-        for (const sub of child.children) {
-          const sm = sub as THREE.Mesh;
-          if (sm.geometry && sm.geometry !== this.stopGeo) sm.geometry.dispose();
-          const subMats = Array.isArray(sm.material) ? sm.material : sm.material ? [sm.material] : [];
-          for (const m of subMats) m.dispose();
-        }
-      }
+    };
+    for (const child of [...group.children]) {
+      group.remove(child);
+      child.traverse(disposeObject);
     }
   }
 
@@ -732,9 +943,11 @@ export class MapEngine {
     this.resizeObserver.disconnect();
     const dom = this.renderer.domElement;
     dom.removeEventListener("pointermove", this.onPointerMove);
-    dom.removeEventListener("pointerdown", this.onPointerDown);
+    dom.removeEventListener("pointerdown", this.onPointerDown, true);
+    dom.removeEventListener("wheel", this.onWheelCapture, { capture: true });
     dom.removeEventListener("pointerup", this.onPointerUp);
     dom.removeEventListener("pointerleave", this.onPointerLeave);
+    dom.removeEventListener("webglcontextlost", this.onContextLost);
     this.controls.dispose();
     for (const st of this.trains.values()) this.disposeTrain(st);
     this.trains.clear();
@@ -743,9 +956,7 @@ export class MapEngine {
     for (const m of this.lineMaterials) m.dispose();
     this.tiles.dispose();
     this.glowTexture.dispose();
-    this.trainBodyGeo.dispose();
-    this.trainTipGeo.dispose();
-    this.stopGeo.dispose();
+    for (const g of this.sharedGeometries) g.dispose();
     this.renderer.dispose();
     dom.remove();
   }

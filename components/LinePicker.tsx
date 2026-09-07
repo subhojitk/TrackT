@@ -1,44 +1,39 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { CSSProperties } from "react";
 import type { Mode } from "@/lib/lines";
 import { LINES_BY_MODE } from "@/lib/lines";
+import { ChevronRight } from "./icons";
+import { LineBadge } from "./ui";
 
 interface Props {
   mode: Mode;
 }
 
 export default function LinePicker({ mode }: Props) {
-  const router = useRouter();
   const lines = LINES_BY_MODE[mode];
 
   return (
-    <div className="w-full">
-      <h2 className="text-[11px] font-bold tracking-[0.2em] text-zinc-500 mb-4">SELECT LINE</h2>
-      <div className="flex flex-col gap-2">
-        {lines.map((line, i) => (
-          <button
-            key={line.id}
-            onClick={() => router.push(`/?mode=${mode}&line=${line.id}`)}
-            className="group card-fluid stagger flex items-center gap-4 p-4 rounded-xl border border-zinc-800 hover:border-zinc-600 bg-zinc-900/40 hover:bg-zinc-900/80 text-left cursor-pointer"
-            style={{ "--stagger-i": Math.min(i, 12) } as React.CSSProperties}
+    <ul className="flex flex-col gap-2" role="list">
+      {lines.map((line, i) => (
+        <li key={line.id}>
+          <Link
+            href={`/?mode=${mode}&line=${line.id}`}
+            className="group card card-fluid stagger flex items-center gap-4 px-4 py-3.5 hover:border-line-strong hover:bg-surface-2 focus-ring"
+            style={{ "--stagger-i": Math.min(i, 12) } as CSSProperties}
           >
-            <span
-              className="shrink-0 text-xs font-black px-2.5 py-1.5 rounded-md min-w-[2.5rem] text-center"
-              style={{ backgroundColor: line.color, color: line.textColor === "black" ? "#000" : "#fff" }}
-            >
-              {line.shortName}
-            </span>
+            <LineBadge line={line} size="lg" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-zinc-100">{line.name}</div>
-              <div className="text-[11px] text-zinc-500 mt-0.5">
-                {line.terminus[0]} ↔ {line.terminus[1]}
+              <div className="text-[14px] font-semibold text-fg leading-tight">{line.name}</div>
+              <div className="text-[12px] text-fg-3 mt-0.5 truncate">
+                {line.terminus[0]} <span className="text-fg-3/60">↔</span> {line.terminus[1]}
               </div>
             </div>
-            <span className="text-zinc-600 group-hover:text-zinc-400 transition-colors text-sm">›</span>
-          </button>
-        ))}
-      </div>
-    </div>
+            <ChevronRight size={16} className="text-fg-3/60 group-hover:text-fg-2 transition-colors shrink-0" />
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchPredictions } from "@/lib/mbta-api";
 import { getRouteIdsForLine } from "@/lib/lines";
+import { errorMessage } from "@/lib/jsonapi";
 
 export const runtime = "nodejs";
 
@@ -16,8 +17,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(predictions, {
       headers: { "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" },
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("[predictions]", e);
-    return NextResponse.json({ error: e.message, cause: e.cause?.message }, { status: 502 });
+    return NextResponse.json({ error: errorMessage(e) }, { status: 502 });
   }
 }

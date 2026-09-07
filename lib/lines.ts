@@ -313,3 +313,19 @@ export function inferLineId(mbtaRouteId: string): string {
   if (mbtaRouteId.startsWith("Green-")) return "Green";
   return mbtaRouteId;
 }
+
+export const MODE_LABELS: Record<Mode, string> = {
+  subway: "Subway",
+  commuter_rail: "Commuter Rail",
+  bus: "Bus",
+  ferry: "Ferry",
+};
+
+export const MODE_TAGLINES: Record<Mode, string> = {
+  subway: "Red, Orange, Blue, Green & Mattapan",
+  commuter_rail: "12 routes across Greater Boston",
+  bus: "Key and Silver Line routes",
+  ferry: "Hingham, Hull & Charlestown",
+};
+
+export const MODE_ORDER: Mode[] = ["subway", "commuter_rail", "bus", "ferry"];

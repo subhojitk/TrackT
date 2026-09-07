@@ -5,6 +5,11 @@ import { GL_STOPS } from "@/lib/stops";
 
 const TM_KEY = process.env.TICKETMASTER_API_KEY ?? "";
 
+interface EspnCompetitor {
+  homeAway?: string;
+  team?: { slug?: string; displayName?: string };
+}
+
 // Find nearest GL stops to a lat/lon (returns up to 2 within 0.75 miles)
 function nearbyStops(lat: number, lon: number): StopRef[] {
   const R = 3959; // earth radius miles
@@ -159,11 +164,11 @@ async function fetchCeltics(): Promise<TransitEvent[]> {
   for (const event of data.events ?? []) {
     const competition = event.competitions?.[0];
     if (!competition) continue;
-    const homeTeam = competition.competitors?.find((c: any) => c.homeAway === "home");
+    const homeTeam = competition.competitors?.find((c: EspnCompetitor) => c.homeAway === "home");
     if (homeTeam?.team?.slug !== "boston-celtics") continue;
     const start = new Date(event.date);
     if (start < new Date() || start > cutoff) continue;
-    const awayTeam = competition.competitors?.find((c: any) => c.homeAway === "away");
+    const awayTeam = competition.competitors?.find((c: EspnCompetitor) => c.homeAway === "away");
     const awayName = awayTeam?.team?.displayName ?? "Visitor";
     events.push({
       id: `nba-${event.id}`,

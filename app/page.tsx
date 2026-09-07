@@ -2,81 +2,97 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import AppShell, { type Crumb } from "@/components/AppShell";
 import ModePicker from "@/components/ModePicker";
 import LinePicker from "@/components/LinePicker";
 import StopPicker from "@/components/StopPicker";
-import Breadcrumb from "@/components/Breadcrumb";
 import StopMap from "@/components/StopMapDynamic";
+import { LineBadge, Spinner } from "@/components/ui";
 import type { Mode } from "@/lib/lines";
-import { getLine } from "@/lib/lines";
+import { getLine, LINES_BY_MODE, MODE_LABELS } from "@/lib/lines";
+
+const MODES = new Set<Mode>(["subway", "commuter_rail", "bus", "ferry"]);
 
 function HomeContent() {
   const params = useSearchParams();
-  const mode = params.get("mode") as Mode | null;
-  const lineId = params.get("line");
-  const line = lineId ? getLine(lineId) : null;
+  const rawMode = params?.get("mode") ?? null;
+  const mode: Mode | null = rawMode && MODES.has(rawMode as Mode) ? (rawMode as Mode) : null;
+  const lineId = params?.get("line") ?? null;
+  const line = lineId ? getLine(lineId) : undefined;
 
-  const step = lineId ? "stop" : mode ? "line" : "mode";
+  const step = line ? "stop" : mode ? "line" : "mode";
+
+  const crumbs: Crumb[] = [];
+  if (mode) crumbs.push({ label: MODE_LABELS[mode], href: `/?mode=${mode}` });
+  if (line) crumbs.push({ label: line.name, color: line.color });
 
   return (
-    <div className="flex flex-col bg-zinc-950 font-mono" style={{ height: "100dvh" }}>
-      <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/80 shrink-0">
-        <span className="font-bold tracking-[0.2em] text-sm" style={{ color: line?.color ?? "#4ade80" }}>
-          TRACKT
-        </span>
-        <span className="text-zinc-600 text-xs tracking-widest">MBTA REAL-TIME</span>
-      </header>
+    <AppShell
+      accent={line?.color ?? "#22c55e"}
+      crumbs={crumbs}
+      status={{ tone: "good", label: "Live data", pulse: true }}
+      map={<StopMap lineId={line?.id} />}
+    >
+      <div className="max-w-[640px] mx-auto px-5 sm:px-8 py-8 sm:py-10">
+        <div key={step + (line?.id ?? mode ?? "")} className="fade-rise">
+          {step === "mode" && (
+            <>
+              <p className="eyebrow mb-3">Real-time MBTA</p>
+              <h1 className="text-[30px] sm:text-[36px] font-bold tracking-tight leading-[1.05] text-fg">
+                Where are you headed?
+              </h1>
+              <p className="text-[15px] text-fg-2 mt-3 mb-8 max-w-[34rem] leading-relaxed">
+                Live departures, delay context, service alerts and crowd forecasts for every MBTA line.
+                Pick a mode to get started.
+              </p>
+              <ModePicker />
+            </>
+          )}
 
-      <div className="flex flex-1 overflow-hidden">
+          {step === "line" && mode && (
+            <>
+              <p className="eyebrow mb-3">Step 2 of 3</p>
+              <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-[1.05] text-fg">Choose a line</h1>
+              <p className="text-[14px] text-fg-3 mt-2 mb-6">
+                {MODE_LABELS[mode]} · {LINES_BY_MODE[mode].length} lines
+              </p>
+              <LinePicker mode={mode} />
+            </>
+          )}
 
-        {/* LEFT: map — always present, overview when nothing selected */}
-        <div className="hidden md:block relative border-r border-zinc-800 shrink-0 h-full" style={{ width: "580px" }}>
-          <StopMap lineId={lineId ?? undefined} fillContainer />
+          {step === "stop" && line && (
+            <>
+              <p className="eyebrow mb-3">Step 3 of 3</p>
+              <div className="flex items-center gap-3">
+                <LineBadge line={line} size="lg" />
+                <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-[1.05] text-fg">Choose a stop</h1>
+              </div>
+              <p className="text-[14px] text-fg-3 mt-2 mb-6">
+                {line.name} · {line.terminus[0]} <span className="text-fg-3/60">↔</span> {line.terminus[1]}
+              </p>
+              <StopPicker lineId={line.id} />
+            </>
+          )}
         </div>
 
-        {/* RIGHT: picker steps — scrollable */}
-        <div className="flex flex-col flex-1 overflow-y-auto min-w-0">
-          <div className="p-5 max-w-lg w-full mx-auto">
-            {step !== "mode" && (
-              <Breadcrumb mode={mode ?? undefined} lineId={lineId ?? undefined} />
-            )}
-
-            <div key={step + (lineId ?? mode ?? "")} className="fade-rise">
-              {step === "mode" && (
-                <div className="pt-4">
-                  <h1 className="text-2xl font-bold tracking-tight text-zinc-100 mb-1">TrackT</h1>
-                  <p className="text-zinc-500 text-sm mb-6">Real-time MBTA departures & delay context.</p>
-                  <ModePicker />
-                </div>
-              )}
-
-              {step === "line" && mode && (
-                <LinePicker mode={mode} />
-              )}
-
-              {step === "stop" && lineId && (
-                <StopPicker lineId={lineId} />
-              )}
-            </div>
-          </div>
-        </div>
-
+        <footer className="mt-12 pt-5 border-t border-line text-[12px] text-fg-3 leading-relaxed">
+          Data from the MBTA V3 API. Departures refresh every 30 seconds; vehicle positions every 10.
+          Not affiliated with the MBTA.
+        </footer>
       </div>
-
-      <footer className="border-t border-zinc-800 px-4 py-2 text-[10px] text-zinc-700 text-center font-mono shrink-0">
-        Data from MBTA V3 API · Refreshes every 30s
-      </footer>
-    </div>
+    </AppShell>
   );
 }
 
 export default function Home() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center bg-zinc-950 text-zinc-600 text-xs tracking-widest font-mono" style={{ height: "100dvh" }}>
-        LOADING…
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="h-dvh flex items-center justify-center bg-app text-fg-3 text-[13px] gap-2.5">
+          <Spinner /> Loading…
+        </div>
+      }
+    >
       <HomeContent />
     </Suspense>
   );

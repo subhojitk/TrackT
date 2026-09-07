@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TrackT
 
-## Getting Started
+Real-time MBTA departures with context: live delays, service alerts, historical
+delay baselines, and crowd forecasts from nearby events — for every subway,
+commuter rail, bus and ferry line. A 3D network map (three.js) shows vehicles
+moving along their routes in real time.
 
-First, run the development server:
+## Running locally
 
 ```bash
+npm install
+cp .env.example .env.local   # then add your keys
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `MBTA_API_KEY` | Recommended | Raises the MBTA V3 API limit from 20 to 1,000 requests/min. Free at https://api-v3.mbta.com/portal |
+| `TICKETMASTER_API_KEY` | Optional | Enables concerts, theatre and other events in the crowd forecast. Free at https://developer.ticketmaster.com |
 
-## Learn More
+Red Sox, Bruins and Celtics games are pulled from public league feeds and need no key.
 
-To learn more about Next.js, take a look at the following resources:
+## Architecture
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `app/` — Next.js App Router. `/` is the three-step picker (mode → line → stop); `/stop/[line]/[stop]` is the departure dashboard.
+- `app/api/mbta/*` — thin server routes that proxy the MBTA V3 API (keeps the key server-side, normalises responses, sets cache headers).
+- `components/map3d/` — the WebGL map. `engine.ts` owns the scene, camera, route lines, stop markers and dead-reckoned train animation; `tiles.ts` streams the Esri dark-canvas basemap onto the ground plane.
+- `lib/lines.ts` — the catalogue of lines, colours and MBTA route ids. Add a line here and it appears everywhere.
+- `data/gl-historical-baselines.json` — per-stop, per-hour delay baselines (Green Line) built by `scripts/process-lamp-data.py` from MBTA LAMP data.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes for development
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The basemap is Esri's World Dark Gray Canvas, which is free with attribution and needs no key.
+- If this checkout lives inside an iCloud-synced folder (Desktop/Documents with *Optimize Mac Storage* on), keep dependencies out of iCloud: `node_modules` is a symlink to `node_modules.nosync`, which iCloud ignores. Evicted files inside `node_modules` otherwise stall the dev server on every read.

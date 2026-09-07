@@ -1,18 +1,20 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Spinner } from "./ui";
 
 interface Props {
   currentStopId?: string;
-  fillContainer?: boolean;
   lineId?: string;
 }
 
 const StopMap = dynamic(() => import("./StopMap"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full bg-zinc-900 animate-pulse flex items-center justify-center">
-      <span className="text-zinc-600 text-xs tracking-widest">LOADING MAP…</span>
+    <div className="absolute inset-0 bg-[#0b0c10] flex items-center justify-center">
+      <div className="flex items-center gap-2.5 text-[13px] text-fg-3">
+        <Spinner /> Loading map…
+      </div>
     </div>
   ),
 });

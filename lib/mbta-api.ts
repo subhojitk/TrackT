@@ -1,4 +1,5 @@
 import type { Prediction, Alert, StopInfo } from "@/types/mbta";
+import { relId, str, num, type Document, type Resource, type SingleDocument } from "./jsonapi";
 
 const MBTA_BASE = "https://api-v3.mbta.com";
 const API_KEY = process.env.MBTA_API_KEY ?? "";
@@ -7,9 +8,9 @@ function headers(): HeadersInit {
   return API_KEY ? { "x-api-key": API_KEY } : {};
 }
 
-function buildIncluded(included: any[] = []) {
-  const map: Record<string, any> = {};
-  included.forEach(item => { map[`${item.type}:${item.id}`] = item; });
+function buildIncluded(included: Resource[] = []) {
+  const map = new Map<string, Resource>();
+  for (const item of included) map.set(`${item.type}:${item.id}`, item);
   return map;
 }
 
@@ -33,36 +34,35 @@ export async function fetchPredictions(stopId: string, routes: string[]): Promis
   const url = `${MBTA_BASE}/predictions?${params}`;
   const res = await fetch(url, { headers: headers(), cache: "no-store" });
   if (!res.ok) throw new Error(`MBTA predictions: ${res.status}`);
-  const data = await res.json();
+  const data: Document = await res.json();
   const inc = buildIncluded(data.included);
 
   return (data.data ?? [])
-    .map((p: any) => {
+    .map((p): Prediction => {
       const a = p.attributes;
-      const route: string = p.relationships?.route?.data?.id ?? "";
-      const tripId = p.relationships?.trip?.data?.id;
-      const schedId = p.relationships?.schedule?.data?.id;
-      const trip = inc[`trip:${tripId}`];
-      const sched = schedId ? inc[`schedule:${schedId}`] : null;
-      const predicted = a.arrival_time ?? a.departure_time ?? null;
-      const scheduled =
-        sched?.attributes?.arrival_time ?? sched?.attributes?.departure_time ?? null;
+      const route = relId(p, "route") ?? "";
+      const tripId = relId(p, "trip");
+      const schedId = relId(p, "schedule");
+      const trip = tripId ? inc.get(`trip:${tripId}`) : undefined;
+      const sched = schedId ? inc.get(`schedule:${schedId}`) : undefined;
+      const predicted = str(a.arrival_time) ?? str(a.departure_time);
+      const scheduled = str(sched?.attributes.arrival_time) ?? str(sched?.attributes.departure_time);
 
       return {
         id: p.id,
         predicted,
         scheduled,
         delay: delayMinutes(predicted, scheduled),
-        directionId: a.direction_id,
-        status: a.status ?? null,
-        scheduleRelationship: a.schedule_relationship ?? null,
-        headsign: trip?.attributes?.headsign ?? route,
+        directionId: (num(a.direction_id) ?? 0) as 0 | 1,
+        status: str(a.status),
+        scheduleRelationship: str(a.schedule_relationship),
+        headsign: str(trip?.attributes.headsign) ?? route,
         route,
         branch: deriveBranch(route),
         stopId,
-      } satisfies Prediction;
+      };
     })
-    .filter((p: Prediction) => p.predicted !== null);
+    .filter(p => p.predicted !== null);
 }
 
 export async function fetchAlerts(stopId: string, routes: string[]): Promise<Alert[]> {
@@ -75,14 +75,14 @@ export async function fetchAlerts(stopId: string, routes: string[]): Promise<Ale
   const url = `${MBTA_BASE}/alerts?${params}`;
   const res = await fetch(url, { headers: headers(), cache: "no-store" });
   if (!res.ok) throw new Error(`MBTA alerts: ${res.status}`);
-  const data = await res.json();
+  const data: Document = await res.json();
 
-  return (data.data ?? []).map((a: any) => ({
+  return (data.data ?? []).map((a): Alert => ({
     id: a.id,
-    header: a.attributes.header,
-    effect: a.attributes.effect,
-    severity: a.attributes.severity,
-    updatedAt: a.attributes.updated_at,
+    header: str(a.attributes.header) ?? "",
+    effect: str(a.attributes.effect) ?? "UNKNOWN_EFFECT",
+    severity: num(a.attributes.severity) ?? 0,
+    updatedAt: str(a.attributes.updated_at) ?? "",
   }));
 }
 
@@ -95,15 +95,15 @@ export async function fetchStopById(stopId: string): Promise<StopInfo | null> {
     next: { revalidate: 86400 },
   });
   if (!res.ok) return null;
-  const data = await res.json();
+  const data: SingleDocument = await res.json();
   const a = data.data?.attributes;
   if (!a) return null;
   return {
     id: stopId,
-    name: a.name,
+    name: str(a.name) ?? stopId,
     section: "",
-    lat: a.latitude,
-    lon: a.longitude,
+    lat: num(a.latitude) ?? 0,
+    lon: num(a.longitude) ?? 0,
     accessible: a.wheelchair_boarding === 1,
   };
 }
@@ -115,6 +115,6 @@ export async function fetchRoutesForStop(stopId: string): Promise<string[]> {
     next: { revalidate: 3600 },
   });
   if (!res.ok) return [];
-  const data = await res.json();
-  return (data.data ?? []).map((r: any) => r.id as string);
+  const data: Document = await res.json();
+  return (data.data ?? []).map(r => r.id);
 }

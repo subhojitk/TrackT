@@ -1,61 +1,49 @@
 "use client";
 
 import { useAlerts } from "@/hooks/useAlerts";
+import { humanizeEnum } from "@/lib/utils";
+import { AlertTriangle, Info } from "./icons";
+import { Card, CardHeader, EmptyState, TONE_TEXT, type Tone } from "./ui";
 
-const EFFECT_ICON: Record<string, string> = {
-  DELAY:           "▲",
-  SUSPENSION:      "✕",
-  DETOUR:          "↺",
-  SHUTTLE:         "⇌",
-  STOP_CLOSURE:    "✕",
-  STATION_CLOSURE: "✕",
-  SERVICE_CHANGE:  "◈",
-  ACCESS_ISSUE:    "♿",
-};
-
-const SEVERITY_CLS: Record<number, string> = {
-  1: "text-yellow-400",
-  2: "text-orange-400",
-  3: "text-red-400",
-};
+/** MBTA V3 alert severity runs 0–10; 7+ is disruptive, 4–6 is notable. */
+export function severityTone(severity: number): Tone {
+  if (severity >= 7) return "bad";
+  if (severity >= 4) return "warn";
+  return "info";
+}
 
 export default function AlertsPanel({ stopId, lineId = "Green" }: { stopId: string; lineId?: string }) {
-  const { alerts } = useAlerts(stopId, lineId);
+  const { alerts, isLoading } = useAlerts(stopId, lineId);
+  const sorted = [...alerts].sort((a, b) => b.severity - a.severity);
 
   return (
-    <div className="flex flex-col h-full border-r border-zinc-800 min-w-0" style={{ flex: "0 0 40%" }}>
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
-        <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-400">ALERTS</span>
-        {alerts.length > 0 && (
-          <span className="text-[10px] font-bold text-red-400 bg-red-900/30 px-1 rounded">
-            {alerts.length}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {alerts.length === 0 && (
-          <div className="flex items-center justify-center h-full text-[11px] text-zinc-600 tracking-widest">
-            NO ACTIVE ALERTS
-          </div>
-        )}
-        {alerts.map(a => {
-          const icon = EFFECT_ICON[a.effect] ?? "◈";
-          const sevCls = SEVERITY_CLS[a.severity] ?? SEVERITY_CLS[1];
-          return (
-            <div key={a.id} className="border border-zinc-800 rounded bg-zinc-900/40 px-2.5 py-2">
-              <div className="flex gap-2 items-start">
-                <span className={`${sevCls} text-sm shrink-0 mt-0.5`}>{icon}</span>
+    <Card className="flex flex-col">
+      <CardHeader
+        title="Service alerts"
+        subtitle="Affecting this stop"
+        count={alerts.length}
+        countTone={alerts.some(a => a.severity >= 7) ? "danger" : "warn"}
+        icon={<AlertTriangle size={15} />}
+      />
+      {alerts.length === 0 ? (
+        <EmptyState className="flex-1">{isLoading ? "Checking for alerts…" : "No active alerts for this stop."}</EmptyState>
+      ) : (
+        <ul className="divide-y divide-line" role="list">
+          {sorted.map(a => {
+            const tone = severityTone(a.severity);
+            const Icon = tone === "info" ? Info : AlertTriangle;
+            return (
+              <li key={a.id} className="flex gap-3 px-4 py-3">
+                <Icon size={16} className={`${TONE_TEXT[tone]} shrink-0 mt-0.5`} />
                 <div className="min-w-0">
-                  <div className="text-[9px] tracking-[0.15em] text-zinc-600 uppercase mb-0.5">
-                    {a.effect.replace(/_/g, " ")}
-                  </div>
-                  <div className="text-[11px] text-zinc-300 leading-snug">{a.header}</div>
+                  <div className={`text-[11px] font-semibold uppercase tracking-wider ${TONE_TEXT[tone]}`}>{humanizeEnum(a.effect)}</div>
+                  <p className="text-[13px] text-fg-2 leading-snug mt-0.5">{a.header}</p>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
   );
 }

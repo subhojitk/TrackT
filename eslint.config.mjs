@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // iCloud-excluded install target behind the node_modules symlink
+    "node_modules.nosync/**",
   ]),
 ]);
 
