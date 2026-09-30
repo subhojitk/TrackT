@@ -87,7 +87,7 @@ export default function DirectionBoard({ predictions, isLoading, direction, fall
                 <div className="num text-[34px] font-bold leading-none text-fg">Now</div>
               ) : (
                 <>
-                  <div className={`num text-[40px] font-bold leading-none ${firstMins !== null && firstMins <= 2 ? "text-amber-300" : "text-fg"}`}>{firstMins ?? "—"}</div>
+                  <div className={`num text-[40px] font-bold leading-none ${firstMins !== null && firstMins <= 2 ? "text-orange-500" : "text-fg"}`}>{firstMins ?? "—"}</div>
                   <div className="text-[11px] font-medium text-fg-3 uppercase tracking-wider mt-1">min</div>
                 </>
               )}
@@ -108,7 +108,7 @@ export default function DirectionBoard({ predictions, isLoading, direction, fall
                     <div className="text-[11px] text-fg-3 num">{formatTime(p.scheduled)}</div>
                   </div>
                   {cancelled ? <Pill tone="bad">Cancelled</Pill> : <Pill tone={delay.tone}>{delay.text}</Pill>}
-                  <span className={`num text-[15px] font-semibold text-right min-w-[3.6rem] ${mins !== null && mins <= 2 ? "text-amber-300" : "text-fg"}`}>
+                  <span className={`num text-[15px] font-semibold text-right min-w-[3.6rem] ${mins !== null && mins <= 2 ? "text-orange-500" : "text-fg"}`}>
                     {countdown(mins)}
                   </span>
                 </li>

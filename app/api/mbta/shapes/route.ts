@@ -52,6 +52,36 @@ export async function GET(req: NextRequest) {
     if (!res.ok) return;
     const data = await res.json();
 
+    // Canonical shapes: one per branch pattern (e.g. Red → Ashmont and Braintree),
+    // each in both directions. Keep one per branch; extra branches get "~n" keys
+    // so vehicles on either branch have a track to ride.
+    const branches = new Map<string, string>();
+    for (const shape of data.data ?? []) {
+      const id: string = shape.id ?? "";
+      const encoded: string = shape.attributes?.polyline;
+      if (!id.startsWith("canonical-") || !encoded) continue;
+      const branch = id.slice("canonical-".length).split("_")[0];
+      const prev = branches.get(branch);
+      if (!prev || encoded.length > prev.length) branches.set(branch, encoded);
+    }
+    if (branches.size > 0) {
+      // Some routes publish near-identical variants; drop ones sharing both termini
+      const near = (a: [number, number], b: [number, number]) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) < 0.003;
+      const kept: [number, number][][] = [];
+      for (const encoded of [...branches.values()].sort((a, b) => b.length - a.length)) {
+        const pts = decodePolyline(encoded);
+        if (pts.length < 2) continue;
+        const [a0, a1] = [pts[0], pts[pts.length - 1]];
+        const dup = kept.some(k => {
+          const [b0, b1] = [k[0], k[k.length - 1]];
+          return (near(a0, b0) && near(a1, b1)) || (near(a0, b1) && near(a1, b0));
+        });
+        if (!dup) kept.push(pts);
+      }
+      kept.forEach((pts, i) => { result[i === 0 ? route : `${route}~${i}`] = pts; });
+      return;
+    }
+
     const byDir: Record<number, { len: number; points: [number, number][] }> = {};
     for (const shape of data.data ?? []) {
       const encoded: string = shape.attributes?.polyline;

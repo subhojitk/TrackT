@@ -41,7 +41,7 @@ function EventRow({ event, activeStopId }: { event: TransitEvent; activeStopId?:
   const crowd = CROWD[event.crowdLevel];
 
   return (
-    <li className={`flex gap-4 px-4 py-3 ${isActive ? "bg-amber-400/[0.04]" : ""}`}>
+    <li className={`flex gap-4 px-4 py-3 ${isActive ? "bg-amber-50" : ""}`}>
       <div className="w-11 shrink-0 text-center pt-0.5">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-fg-3">{dayLabel === "Today" || dayLabel === "Tomorrow" ? month : dayLabel}</div>
         <div className="num text-[20px] font-bold leading-none text-fg mt-0.5">{dayNum}</div>
@@ -65,8 +65,8 @@ function EventRow({ event, activeStopId }: { event: TransitEvent; activeStopId?:
               <Link
                 key={stopId}
                 href={`/stop/${lineId}/${stopId}`}
-                className={`text-[11px] font-medium px-1.5 py-0.5 rounded-md transition-colors focus-ring ${
-                  active ? "bg-amber-400/15 text-amber-200" : "bg-white/6 hover:bg-white/10 text-fg-2"
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors focus-ring ${
+                  active ? "bg-amber-100 text-amber-800" : "bg-black/[0.05] hover:bg-black/10 text-ink-2"
                 }`}
               >
                 {label}

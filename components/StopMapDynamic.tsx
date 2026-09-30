@@ -1,22 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Spinner } from "./ui";
 
 interface Props {
   currentStopId?: string;
   lineId?: string;
 }
 
+// three.js needs the DOM; the sky gradient stands in until the engine boots
 const StopMap = dynamic(() => import("./StopMap"), {
   ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 bg-[#0b0c10] flex items-center justify-center">
-      <div className="flex items-center gap-2.5 text-[13px] text-fg-3">
-        <Spinner /> Loading map…
-      </div>
-    </div>
-  ),
+  loading: () => <div className="absolute inset-0 sky-bg" />,
 });
 
 export default function StopMapDynamic(props: Props) {

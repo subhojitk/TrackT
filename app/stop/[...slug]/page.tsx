@@ -27,7 +27,7 @@ export default async function StopPage({ params }: Props) {
     const [routeId, stopId] = slug;
     const [stop, line] = await Promise.all([fetchStopById(stopId), Promise.resolve(getLine(routeId))]);
     if (!stop || !line) notFound();
-    return <DashboardLayout stopId={stopId} stopName={stop.name} lineId={routeId} accessible={stop.accessible} />;
+    return <DashboardLayout key={stopId} stopId={stopId} stopName={stop.name} lineId={routeId} accessible={stop.accessible} />;
   }
 
   if (slug.length === 1) {

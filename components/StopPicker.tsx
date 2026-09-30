@@ -7,6 +7,7 @@ import type { StopListItem } from "@/types/mbta";
 import { getLine } from "@/lib/lines";
 import { Accessible, ChevronRight, Search } from "./icons";
 import { EmptyState, Skeleton } from "./ui";
+import { getEngine, originFromEvent } from "@/lib/mapBus";
 
 const fetcher = (url: string) =>
   fetch(url).then(r => {
@@ -49,26 +50,26 @@ export default function StopPicker({ lineId }: Props) {
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />
         <input
           type="search"
-          placeholder="Search stops…"
+          placeholder="Filter stops on this line…"
           value={query}
           onChange={e => setQuery(e.target.value)}
           autoComplete="off"
-          className="w-full h-11 bg-surface border border-line rounded-xl pl-10 pr-4 text-[14px] text-fg placeholder:text-fg-3 focus:outline-none focus:border-line-strong focus:ring-2 focus:ring-[color:var(--accent)]/40 transition"
+          className="w-full h-11 bg-white border-[1.5px] border-line rounded-2xl pl-10 pr-4 text-[14px] font-semibold text-ink placeholder:text-ink-3 placeholder:font-medium focus:outline-none focus:border-line-strong focus:ring-4 focus:ring-[color:var(--accent)]/25 transition"
         />
       </label>
 
       <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-[12px] text-fg-3">
+        <span className="text-[12px] font-semibold text-ink-3">
           {isLoading ? "Loading stops…" : `${filtered.length} ${filtered.length === 1 ? "stop" : "stops"}${q ? " match" : ""}`}
         </span>
-        <span className="inline-flex items-center gap-1 text-[12px] text-fg-3">
+        <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink-3">
           <Accessible size={13} /> Accessible
         </span>
       </div>
 
       {isLoading && (
         <div className="flex flex-col gap-2">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[52px] rounded-xl" />)}
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[50px] rounded-[20px]" />)}
         </div>
       )}
 
@@ -86,16 +87,20 @@ export default function StopPicker({ lineId }: Props) {
             <li key={stop.id}>
               <Link
                 href={`/stop/${lineId}/${stop.id}`}
-                className="group card card-fluid stagger flex items-center gap-3.5 px-4 py-3 hover:border-line-strong hover:bg-surface-2 focus-ring"
+                onClick={e => {
+                  originFromEvent(e);
+                  getEngine()?.flyTo(stop.lat, stop.lon, 110);
+                }}
+                className="group card card-fluid stagger flex items-center gap-3.5 px-4 py-3 hover:border-line-strong focus-ring"
                 style={{ "--stagger-i": Math.min(i, 14) } as CSSProperties}
               >
-                <span className="relative flex items-center justify-center w-3 h-3 shrink-0">
-                  <span className="absolute inset-0 rounded-full" style={{ background: line?.color ?? "#22c55e" }} />
-                  <span className="relative w-1.5 h-1.5 rounded-full bg-white" />
+                <span className="relative flex items-center justify-center w-4 h-4 shrink-0">
+                  <span className="absolute inset-0 rounded-full transition-transform duration-300 group-hover:scale-125" style={{ background: line?.color ?? "#22c55e" }} />
+                  <span className="relative w-2 h-2 rounded-full bg-white" />
                 </span>
-                <span className="flex-1 text-[14px] font-medium text-fg-2 group-hover:text-fg truncate">{stop.name}</span>
-                {stop.accessible && <Accessible size={14} className="text-fg-3 shrink-0" aria-label="Accessible" />}
-                <ChevronRight size={16} className="text-fg-3/60 group-hover:text-fg-2 transition-colors shrink-0" />
+                <span className="flex-1 text-[14px] font-bold text-ink-2 group-hover:text-ink truncate">{stop.name}</span>
+                {stop.accessible && <Accessible size={14} className="text-ink-3 shrink-0" aria-label="Accessible" />}
+                <ChevronRight size={16} className="text-ink-3/60 group-hover:text-ink-2 transition-colors shrink-0" />
               </Link>
             </li>
           ))}

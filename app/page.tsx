@@ -1,99 +1,93 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import AppShell, { type Crumb } from "@/components/AppShell";
-import ModePicker from "@/components/ModePicker";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import Window from "@/components/Window";
+import ModePicker, { MODE_COLORS } from "@/components/ModePicker";
 import LinePicker from "@/components/LinePicker";
 import StopPicker from "@/components/StopPicker";
-import StopMap from "@/components/StopMapDynamic";
-import { LineBadge, Spinner } from "@/components/ui";
+import { ChevronLeft } from "@/components/icons";
 import type { Mode } from "@/lib/lines";
 import { getLine, LINES_BY_MODE, MODE_LABELS } from "@/lib/lines";
 
 const MODES = new Set<Mode>(["subway", "commuter_rail", "bus", "ferry"]);
 
-function HomeContent() {
+function BackLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-1 text-[13px] font-bold text-ink-3 hover:text-ink transition-colors mb-3 -ml-1 px-1 rounded-md focus-ring">
+      <ChevronLeft size={16} /> {label}
+    </Link>
+  );
+}
+
+function Explorer() {
+  const router = useRouter();
   const params = useSearchParams();
   const rawMode = params?.get("mode") ?? null;
-  const mode: Mode | null = rawMode && MODES.has(rawMode as Mode) ? (rawMode as Mode) : null;
-  const lineId = params?.get("line") ?? null;
-  const line = lineId ? getLine(lineId) : undefined;
+  const line = getLine(params?.get("line") ?? "");
+  const mode: Mode | null = line?.mode ?? (rawMode && MODES.has(rawMode as Mode) ? (rawMode as Mode) : null);
 
   const step = line ? "stop" : mode ? "line" : "mode";
 
-  const crumbs: Crumb[] = [];
-  if (mode) crumbs.push({ label: MODE_LABELS[mode], href: `/?mode=${mode}` });
-  if (line) crumbs.push({ label: line.name, color: line.color });
+  const header =
+    step === "stop" && line
+      ? { accent: line.color, text: line.textColor, eyebrow: `${MODE_LABELS[line.mode]} · Pick a stop`, title: line.name, close: `/?mode=${line.mode}` }
+      : step === "line" && mode
+        ? { accent: MODE_COLORS[mode].bg, text: MODE_COLORS[mode].text, eyebrow: `${LINES_BY_MODE[mode].length} lines`, title: MODE_LABELS[mode], close: "/" }
+        : { accent: "#1d2433", text: "white" as const, eyebrow: "Live MBTA · 3D", title: "Where to?", close: null };
 
   return (
-    <AppShell
-      accent={line?.color ?? "#22c55e"}
-      crumbs={crumbs}
-      status={{ tone: "good", label: "Live data", pulse: true }}
-      map={<StopMap lineId={line?.id} />}
+    <Window
+      id="explorer"
+      dock="left"
+      width={400}
+      accent={header.accent}
+      accentText={header.text}
+      eyebrow={header.eyebrow}
+      title={header.title}
+      onClose={header.close ? () => router.push(header.close!) : undefined}
+      closeLabel="Back"
     >
-      <div className="max-w-[640px] mx-auto px-5 sm:px-8 py-8 sm:py-10">
-        <div key={step + (line?.id ?? mode ?? "")} className="fade-rise">
-          {step === "mode" && (
-            <>
-              <p className="eyebrow mb-3">Real-time MBTA</p>
-              <h1 className="text-[30px] sm:text-[36px] font-bold tracking-tight leading-[1.05] text-fg">
-                Where are you headed?
-              </h1>
-              <p className="text-[15px] text-fg-2 mt-3 mb-8 max-w-[34rem] leading-relaxed">
-                Live departures, delay context, service alerts and crowd forecasts for every MBTA line.
-                Pick a mode to get started.
-              </p>
-              <ModePicker />
-            </>
-          )}
+      <div key={step + (line?.id ?? mode ?? "")} className="p-4 fade-rise">
+        {step === "mode" && (
+          <>
+            <p className="text-[14px] font-medium text-ink-2 leading-relaxed mb-4 px-1">
+              Every train on the map is live. Pick a mode, tap any station, or click a train to ride along.
+            </p>
+            <ModePicker />
+          </>
+        )}
 
-          {step === "line" && mode && (
-            <>
-              <p className="eyebrow mb-3">Step 2 of 3</p>
-              <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-[1.05] text-fg">Choose a line</h1>
-              <p className="text-[14px] text-fg-3 mt-2 mb-6">
-                {MODE_LABELS[mode]} · {LINES_BY_MODE[mode].length} lines
-              </p>
-              <LinePicker mode={mode} />
-            </>
-          )}
+        {step === "line" && mode && (
+          <>
+            <BackLink href="/" label="All modes" />
+            <LinePicker mode={mode} />
+          </>
+        )}
 
-          {step === "stop" && line && (
-            <>
-              <p className="eyebrow mb-3">Step 3 of 3</p>
-              <div className="flex items-center gap-3">
-                <LineBadge line={line} size="lg" />
-                <h1 className="text-[28px] sm:text-[32px] font-bold tracking-tight leading-[1.05] text-fg">Choose a stop</h1>
-              </div>
-              <p className="text-[14px] text-fg-3 mt-2 mb-6">
-                {line.name} · {line.terminus[0]} <span className="text-fg-3/60">↔</span> {line.terminus[1]}
-              </p>
-              <StopPicker lineId={line.id} />
-            </>
-          )}
-        </div>
+        {step === "stop" && line && (
+          <>
+            <BackLink href={`/?mode=${line.mode}`} label={MODE_LABELS[line.mode]} />
+            <p className="text-[13px] font-semibold text-ink-3 mb-3 px-1">
+              {line.terminus[0]} <span className="opacity-60">↔</span> {line.terminus[1]}
+            </p>
+            <StopPicker lineId={line.id} />
+          </>
+        )}
 
-        <footer className="mt-12 pt-5 border-t border-line text-[12px] text-fg-3 leading-relaxed">
-          Data from the MBTA V3 API. Departures refresh every 30 seconds; vehicle positions every 10.
-          Not affiliated with the MBTA.
+        <footer className="mt-6 pt-4 border-t border-line text-[11.5px] font-medium text-ink-3 leading-relaxed px-1">
+          Live data from the MBTA V3 API. Departures refresh every 30 s, vehicles every 10 s. Not affiliated with the MBTA.
         </footer>
       </div>
-    </AppShell>
+    </Window>
   );
 }
 
 export default function Home() {
   return (
-    <Suspense
-      fallback={
-        <div className="h-dvh flex items-center justify-center bg-app text-fg-3 text-[13px] gap-2.5">
-          <Spinner /> Loading…
-        </div>
-      }
-    >
-      <HomeContent />
+    <Suspense fallback={null}>
+      <Explorer />
     </Suspense>
   );
 }

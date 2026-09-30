@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Urbanist, JetBrains_Mono } from "next/font/google";
+import MapStage from "@/components/MapStage";
+import Hud from "@/components/Hud";
 import "./globals.css";
 
 const urbanist = Urbanist({
@@ -17,18 +19,18 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "TrackT — Live MBTA departures",
+    default: "TrackT — Live MBTA map",
     template: "%s — TrackT",
   },
-  description: "Real-time MBTA departures, delays, service alerts and crowd forecasts for every line.",
+  description: "A live 3D map of the MBTA: moving trains, real-time departures, delays, service alerts and crowd forecasts.",
   manifest: "/manifest.json",
   applicationName: "TrackT",
-  appleWebApp: { capable: true, title: "TrackT", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "TrackT", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0c",
-  colorScheme: "dark",
+  themeColor: "#7cc7ff",
+  colorScheme: "light",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -41,7 +43,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${urbanist.variable} ${mono.variable}`}>
-      <body className="min-h-dvh bg-app text-zinc-100 antialiased">
+      <body className="h-dvh bg-app text-ink antialiased">
+        {/* Persistent fullscreen map; pages float windows over it */}
+        <MapStage />
+        <Hud />
         {children}
       </body>
     </html>

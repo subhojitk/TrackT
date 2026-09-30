@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import AppShell, { type Crumb } from "./AppShell";
-import StopMap from "./StopMapDynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import Window from "./Window";
 import DirectionBoard from "./DirectionBoard";
 import AlertsPanel, { severityTone } from "./AlertsPanel";
 import LiveFeed from "./LiveFeed";
@@ -12,8 +13,8 @@ import { useAlerts } from "@/hooks/useAlerts";
 import { useHistoricalContext } from "@/hooks/useHistoricalContext";
 import { getLine, MODE_LABELS } from "@/lib/lines";
 import { relativeTime } from "@/lib/utils";
-import { Accessible, AlertTriangle, Clock as ClockIcon, Refresh } from "./icons";
-import { LineBadge, Pill, TONE_TEXT, type Tone } from "./ui";
+import { Accessible, AlertTriangle, ChevronLeft, Clock as ClockIcon, Refresh } from "./icons";
+import { LineBadge, StatusDot, TONE_TEXT, type Tone } from "./ui";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function DashboardLayout({ stopId, stopName, lineId = "Green", accessible }: Props) {
+  const router = useRouter();
   const line = getLine(lineId) ?? getLine("Green")!;
   const { predictions, isLoading, isValidating, isError, refresh } = usePredictions(stopId, lineId);
   const { alerts } = useAlerts(stopId, lineId);
@@ -51,105 +53,100 @@ export default function DashboardLayout({ stopId, stopName, lineId = "Green", ac
   const statusTone: Tone = isError ? "bad" : isLoading ? "warn" : "good";
   const statusLabel = isError ? "Connection issue" : isLoading ? "Connecting…" : isValidating ? "Updating…" : "Live";
 
-  const crumbs: Crumb[] = [
-    { label: MODE_LABELS[line.mode], href: `/?mode=${line.mode}` },
-    { label: line.name, href: `/?mode=${line.mode}&line=${line.id}`, color: line.color },
-    { label: stopName },
-  ];
-
   const topAlert = [...alerts].sort((a, b) => b.severity - a.severity)[0];
   const showBranch = line.routes.length > 1;
   const todayName = DAY_NAMES[new Date().getDay()];
 
+  const lineHref = `/?mode=${line.mode}&line=${line.id}`;
+
   return (
-    <AppShell
+    <Window
+      id="stop"
+      dock="right"
+      width={500}
       accent={line.color}
-      crumbs={crumbs}
-      status={{ tone: statusTone, label: statusLabel, pulse: statusTone === "good" }}
-      map={<StopMap currentStopId={stopId} lineId={line.id} />}
+      accentText={line.textColor}
+      eyebrow={`${MODE_LABELS[line.mode]} · ${line.name}`}
+      title={stopName}
+      headerExtra={accessible ? <Accessible size={17} className="shrink-0 opacity-90" aria-label="Accessible station" /> : undefined}
+      onClose={() => router.push(lineHref)}
+      closeLabel={`Back to ${line.name}`}
     >
-      <div className="@container max-w-[1080px] mx-auto px-5 sm:px-8 py-6 sm:py-8 space-y-5 fade-rise">
+      <div className="@container p-4 space-y-3.5">
 
-        {/* Stop header */}
-        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5 mb-2.5">
-              <LineBadge line={line} size="lg" />
-              <span className="text-[13px] font-medium text-fg-2">{line.name}</span>
-              {accessible && (
-                <Pill tone="neutral"><Accessible size={12} /> Accessible</Pill>
-              )}
-            </div>
-            <h1 className="text-[30px] sm:text-[36px] font-bold tracking-tight leading-none text-fg">{stopName}</h1>
-            <p className="text-[13px] text-fg-3 mt-2.5">
-              {line.terminus[0]} <span className="text-fg-3/60">↔</span> {line.terminus[1]}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 text-[12px] text-fg-3">
+        {/* Status row */}
+        <div className="flex items-center justify-between gap-3 fade-rise">
+          <Link href={lineHref} className="inline-flex items-center gap-1 text-[13px] font-bold text-ink-3 hover:text-ink transition-colors -ml-1 px-1 rounded-md focus-ring min-w-0">
+            <ChevronLeft size={16} className="shrink-0" />
+            <LineBadge line={line} size="sm" />
+            <span className="truncate">All stops</span>
+          </Link>
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-ink-3 shrink-0">
+            <StatusDot tone={statusTone} pulse={statusTone === "good"} />
             <span suppressHydrationWarning>
-              {isError ? <span className={TONE_TEXT.bad}>Couldn&apos;t reach the MBTA API — retrying</span> : lastUpdated ? `Updated ${relativeTime(lastUpdated, now)}` : "Loading departures…"}
+              {isError ? <span className={TONE_TEXT.bad}>Can&apos;t reach MBTA — retrying</span> : lastUpdated ? `${statusLabel} · ${relativeTime(lastUpdated, now)}` : "Loading…"}
             </span>
             <button
               type="button"
               onClick={refresh}
               aria-label="Refresh departures"
               title="Refresh departures"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-fg-2 hover:text-fg hover:bg-white/8 transition-colors focus-ring"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-full bg-black/[0.05] text-ink-2 hover:text-ink hover:bg-black/10 btn-pop focus-ring"
             >
               <Refresh size={15} className={isValidating ? "spin" : ""} />
             </button>
           </div>
-        </header>
+        </div>
 
         {/* Most severe alert, surfaced above the boards */}
         {topAlert && (
-          <div className={`card flex items-start gap-3 px-4 py-3 border-l-2 ${
-            severityTone(topAlert.severity) === "bad" ? "border-l-red-500" : severityTone(topAlert.severity) === "warn" ? "border-l-amber-400" : "border-l-sky-400"
+          <div className={`card flex items-start gap-3 px-4 py-3 border-l-4 fade-rise ${
+            severityTone(topAlert.severity) === "bad" ? "!border-l-red-500" : severityTone(topAlert.severity) === "warn" ? "!border-l-amber-400" : "!border-l-sky-400"
           }`}>
             <AlertTriangle size={16} className={`${TONE_TEXT[severityTone(topAlert.severity)]} shrink-0 mt-0.5`} />
-            <p className="text-[13px] text-fg-2 leading-snug">
-              <span className="font-semibold text-fg">{topAlert.effect.replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase())}.</span>{" "}
+            <p className="text-[13px] font-medium text-ink-2 leading-snug">
+              <span className="font-bold text-ink">{topAlert.effect.replace(/_/g, " ").toLowerCase().replace(/^\w/, c => c.toUpperCase())}.</span>{" "}
               {topAlert.header}
-              {alerts.length > 1 && <span className="text-fg-3"> · {alerts.length - 1} more below</span>}
-            </p>
-          </div>
-        )}
-
-        {/* Historical delay context (Green Line stops only) */}
-        {historical && historical.sampleSize > 0 && (
-          <div className="card flex items-start gap-3 px-4 py-3">
-            <ClockIcon size={16} className="text-fg-3 shrink-0 mt-0.5" />
-            <p className="text-[13px] text-fg-2 leading-snug">
-              Trains here typically run{" "}
-              <span className="font-semibold text-fg num">
-                {historical.avgDelayMinutes > 0 ? `${historical.avgDelayMinutes} min late` : "on time"}
-              </span>{" "}
-              at this hour on {todayName}s; one in four is{" "}
-              <span className="font-semibold text-fg num">{historical.p75DelayMinutes}+ min</span> late.
-              <span className="text-fg-3"> Based on {historical.sampleSize.toLocaleString()} past trips.</span>
+              {alerts.length > 1 && <span className="text-ink-3"> · {alerts.length - 1} more below</span>}
             </p>
           </div>
         )}
 
         {/* Departure boards */}
-        <div className="grid gap-4 @2xl:grid-cols-2">
-          <DirectionBoard predictions={predictions} isLoading={isLoading} direction={1} fallbackLabel="Inbound" line={line} now={now} />
-          <DirectionBoard predictions={predictions} isLoading={isLoading} direction={0} fallbackLabel="Outbound" line={line} now={now} />
+        <div className="grid gap-3.5 @2xl:grid-cols-2">
+          <div className="stagger" style={{ "--stagger-i": 2 } as React.CSSProperties}>
+            <DirectionBoard predictions={predictions} isLoading={isLoading} direction={1} fallbackLabel="Inbound" line={line} now={now} />
+          </div>
+          <div className="stagger" style={{ "--stagger-i": 4 } as React.CSSProperties}>
+            <DirectionBoard predictions={predictions} isLoading={isLoading} direction={0} fallbackLabel="Outbound" line={line} now={now} />
+          </div>
         </div>
+
+        {/* Historical delay context (Green Line stops only) */}
+        {historical && historical.sampleSize > 0 && (
+          <div className="card flex items-start gap-3 px-4 py-3">
+            <ClockIcon size={16} className="text-ink-3 shrink-0 mt-0.5" />
+            <p className="text-[13px] font-medium text-ink-2 leading-snug">
+              Trains here typically run{" "}
+              <span className="font-bold text-ink num">
+                {historical.avgDelayMinutes > 0 ? `${historical.avgDelayMinutes} min late` : "on time"}
+              </span>{" "}
+              at this hour on {todayName}s; one in four is{" "}
+              <span className="font-bold text-ink num">{historical.p75DelayMinutes}+ min</span> late.
+              <span className="text-ink-3"> Based on {historical.sampleSize.toLocaleString()} past trips.</span>
+            </p>
+          </div>
+        )}
 
         {/* Context */}
-        <div className="grid gap-4 @3xl:grid-cols-2">
-          <AlertsPanel stopId={stopId} lineId={line.id} />
-          <EventsPanel stopId={stopId} />
-        </div>
-
+        <AlertsPanel stopId={stopId} lineId={line.id} />
+        <EventsPanel stopId={stopId} />
         <LiveFeed predictions={predictions} showBranch={showBranch} now={now} />
 
-        <footer className="pt-2 pb-4 text-[12px] text-fg-3 leading-relaxed">
+        <footer className="pt-1 pb-2 px-1 text-[11.5px] font-medium text-ink-3 leading-relaxed">
           Departures refresh every 30 seconds from the MBTA V3 API. Delay is predicted arrival minus the schedule.
         </footer>
       </div>
-    </AppShell>
+    </Window>
   );
 }

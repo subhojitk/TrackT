@@ -19,16 +19,16 @@ interface CardHeaderProps {
 
 export function CardHeader({ title, subtitle, count, countTone = "neutral", right, icon }: CardHeaderProps) {
   const toneCls = {
-    neutral: "bg-white/8 text-fg-2",
-    warn: "bg-amber-400/15 text-amber-300",
-    danger: "bg-red-500/15 text-red-300",
+    neutral: "bg-black/[0.06] text-ink-2",
+    warn: "bg-amber-100 text-amber-700",
+    danger: "bg-red-100 text-red-700",
   }[countTone];
   return (
-    <header className="flex items-center gap-2.5 px-4 py-3 border-b border-line">
+    <header className="flex items-center gap-2.5 px-4 py-3 border-b-[1.5px] border-line">
       {icon && <span className="text-fg-3 flex items-center">{icon}</span>}
       <div className="flex items-baseline gap-2 min-w-0">
-        <h2 className="text-[13px] font-semibold text-fg tracking-tight whitespace-nowrap">{title}</h2>
-        {subtitle && <span className="text-[12px] text-fg-3 truncate hidden @md:inline">{subtitle}</span>}
+        <h2 className="text-[14px] font-extrabold text-ink tracking-tight whitespace-nowrap">{title}</h2>
+        {subtitle && <span className="text-[12px] font-medium text-ink-3 truncate hidden @md:inline">{subtitle}</span>}
       </div>
       {typeof count === "number" && count > 0 && (
         <span className={`num text-[11px] font-semibold px-1.5 py-0.5 rounded-md leading-none ${toneCls}`}>{count}</span>
@@ -40,14 +40,14 @@ export function CardHeader({ title, subtitle, count, countTone = "neutral", righ
 
 export function EmptyState({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex items-center justify-center text-center px-6 py-8 text-[13px] text-fg-3 ${className}`}>
+    <div className={`flex items-center justify-center text-center px-6 py-8 text-[13px] font-medium text-ink-3 ${className}`}>
       {children}
     </div>
   );
 }
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-white/6 ${className}`} />;
+  return <div className={`animate-pulse rounded-md bg-black/[0.06] ${className}`} />;
 }
 
 export function Spinner({ size = 14, className = "" }: { size?: number; className?: string }) {
@@ -68,8 +68,8 @@ export function LineBadge({ line, size = "md", className = "" }: { line: Pick<Li
   }[size];
   return (
     <span
-      className={`inline-flex items-center justify-center font-bold leading-none tracking-wide shrink-0 ${sz} ${className}`}
-      style={{ backgroundColor: line.color, color: line.textColor === "black" ? "#0a0a0c" : "#ffffff" }}
+      className={`inline-flex items-center justify-center font-extrabold leading-none tracking-wide shrink-0 ${sz} ${className}`}
+      style={{ backgroundColor: line.color, color: line.textColor === "black" ? "#141824" : "#ffffff", boxShadow: "inset 0 -2px 0 rgba(0,0,0,0.18)" }}
     >
       {line.shortName}
     </span>
@@ -79,30 +79,30 @@ export function LineBadge({ line, size = "md", className = "" }: { line: Pick<Li
 export type Tone = "good" | "warn" | "bad" | "neutral" | "info";
 
 export const TONE_TEXT: Record<Tone, string> = {
-  good: "text-emerald-400",
-  warn: "text-amber-300",
-  bad: "text-red-400",
-  neutral: "text-fg-3",
-  info: "text-sky-300",
+  good: "text-emerald-600",
+  warn: "text-amber-600",
+  bad: "text-red-600",
+  neutral: "text-ink-3",
+  info: "text-sky-600",
 };
 
 export const TONE_PILL: Record<Tone, string> = {
-  good: "bg-emerald-400/12 text-emerald-300",
-  warn: "bg-amber-400/14 text-amber-200",
-  bad: "bg-red-500/14 text-red-300",
-  neutral: "bg-white/6 text-fg-3",
-  info: "bg-sky-400/14 text-sky-200",
+  good: "bg-emerald-100 text-emerald-700",
+  warn: "bg-amber-100 text-amber-700",
+  bad: "bg-red-100 text-red-700",
+  neutral: "bg-black/[0.05] text-ink-3",
+  info: "bg-sky-100 text-sky-700",
 };
 
 export function Pill({ tone = "neutral", children, className = "" }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold leading-none whitespace-nowrap ${TONE_PILL[tone]} ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold leading-none whitespace-nowrap ${TONE_PILL[tone]} ${className}`}>
       {children}
     </span>
   );
 }
 
 export function StatusDot({ tone, pulse = false, className = "" }: { tone: Tone; pulse?: boolean; className?: string }) {
-  const bg = { good: "bg-emerald-400", warn: "bg-amber-400", bad: "bg-red-500", neutral: "bg-zinc-500", info: "bg-sky-400" }[tone];
+  const bg = { good: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-red-500", neutral: "bg-zinc-400", info: "bg-sky-500" }[tone];
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${bg} ${pulse ? "pulse-dot" : ""} ${className}`} />;
 }
