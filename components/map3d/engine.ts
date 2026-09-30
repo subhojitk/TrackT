@@ -43,6 +43,8 @@ const LAND = "#EFE8D6";
  * transit layer always reads on top of buildings).
  */
 const ORDER = {
+  dimHalo: 28,
+  dimCore: 29,
   routeHalo: 30,
   routeCore: 31,
   stopRing: 35,
@@ -79,6 +81,12 @@ export interface StopDatum {
 }
 
 export interface Padding { top: number; right: number; bottom: number; left: number }
+
+export interface RouteStyle {
+  color: string;
+  /** Background context: drawn thinner and half transparent, under active routes, ignored when fitting. */
+  dim?: boolean;
+}
 
 interface EngineOptions {
   onStopClick?: (stop: StopDatum, x: number, y: number) => void;
@@ -440,14 +448,15 @@ export class MapEngine {
 
   // ── Data in ───────────────────────────────────────────────────────────
 
-  /** Rebuild route lines + animation tracks. colors maps shape key → hex. */
-  setShapes(shapes: Record<string, [number, number][]>, colors: Record<string, string>, fit: boolean) {
+  /** Rebuild route lines + animation tracks, styled per shape key. */
+  setShapes(shapes: Record<string, [number, number][]>, styles: Record<string, RouteStyle>, fit: boolean) {
     this.clearGroup(this.routesGroup);
     for (const m of this.lineMaterials) m.dispose();
     this.lineMaterials = [];
     this.tracks.clear();
 
-    const bbox = new THREE.Box3();
+    const bbox = new THREE.Box3();      // active routes — what the camera frames
+    const dimBox = new THREE.Box3();    // fallback when everything is background
     for (const [key, latLons] of Object.entries(shapes)) {
       if (latLons.length < 2) continue;
       const raw = projectShape(latLons);
@@ -455,25 +464,30 @@ export class MapEngine {
       if (track.points.length < 2) continue;
       this.tracks.set(key, track);
 
+      const style = styles[key] ?? { color: "#ffffff" };
+      const dim = !!style.dim;
       const positions: number[] = [];
       for (const p of simplifyXZ(raw, 0.6)) {
         positions.push(p.x, ROUTE_Y, p.z);
-        bbox.expandByPoint(p);
+        (dim ? dimBox : bbox).expandByPoint(p);
       }
       const geo = new LineGeometry();
       geo.setPositions(positions);
-      const color = colors[key] ?? "#ffffff";
 
       // Flat "board game" track: a white casing with a bold colored core
       const core = new LineMaterial({
-        color: new THREE.Color(color).getHex(),
-        linewidth: 5,
+        color: new THREE.Color(style.color).getHex(),
+        linewidth: dim ? 3.5 : 5,
+        transparent: dim,
+        opacity: dim ? 0.5 : 1,
         depthTest: false,
         depthWrite: false,
       });
       const casing = new LineMaterial({
         color: 0xffffff,
-        linewidth: 9.5,
+        linewidth: dim ? 6 : 9.5,
+        transparent: dim,
+        opacity: dim ? 0.35 : 1,
         depthTest: false,
         depthWrite: false,
       });
@@ -481,8 +495,8 @@ export class MapEngine {
 
       const coreLine = new Line2(geo, core);
       const casingLine = new Line2(geo, casing);
-      coreLine.renderOrder = ORDER.routeCore;
-      casingLine.renderOrder = ORDER.routeHalo;
+      coreLine.renderOrder = dim ? ORDER.dimCore : ORDER.routeCore;
+      casingLine.renderOrder = dim ? ORDER.dimHalo : ORDER.routeHalo;
       coreLine.computeLineDistances();
       casingLine.computeLineDistances();
       this.routesGroup.add(casingLine, coreLine);
@@ -500,7 +514,8 @@ export class MapEngine {
       }
     }
 
-    if (fit && !bbox.isEmpty()) this.flyToBox(bbox);
+    const frame = bbox.isEmpty() ? dimBox : bbox;
+    if (fit && !frame.isEmpty()) this.flyToBox(frame);
   }
 
   setStops(stops: StopDatum[], color: string, currentStopId?: string) {

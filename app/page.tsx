@@ -53,7 +53,7 @@ function Explorer() {
         {step === "mode" && (
           <>
             <p className="text-[14px] font-medium text-ink-2 leading-relaxed mb-4 px-1">
-              Every train on the map is live. Pick a mode, tap any station, or click a train to ride along.
+              Pick a mode to light up its network live, then tap any station or click a vehicle to ride along.
             </p>
             <ModePicker />
           </>

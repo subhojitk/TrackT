@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRouteIdsForLine } from "@/lib/lines";
+import { routeIdsForKey } from "@/lib/lines";
 
 const MBTA_BASE = "https://api-v3.mbta.com";
 const API_KEY = process.env.MBTA_API_KEY ?? "";
@@ -29,13 +29,11 @@ function decodePolyline(encoded: string): [number, number][] {
   return points;
 }
 
-// Overview mode: every subway branch, keyed by route id so vehicles can snap to their own track
-const OVERVIEW_LINES = ["Red", "Orange", "Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Mattapan"];
 
 export async function GET(req: NextRequest) {
   const lineId = req.nextUrl.searchParams.get("route") ?? "Green";
-  const isOverview = lineId === "overview";
-  const routeIds = isOverview ? OVERVIEW_LINES : getRouteIdsForLine(lineId);
+  // a line id, or a whole mode ("mode:bus"); keyed by route id so vehicles snap to their own track
+  const routeIds = routeIdsForKey(lineId);
   const headers: HeadersInit = API_KEY ? { "x-api-key": API_KEY } : {};
   const result: Record<string, [number, number][]> = {};
 
@@ -46,7 +44,7 @@ export async function GET(req: NextRequest) {
     });
     const res = await fetch(`${MBTA_BASE}/shapes?${params}`, {
       headers,
-      cache: "no-store",
+      next: { revalidate: 86400 }, // shapes change a few times a year
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return;

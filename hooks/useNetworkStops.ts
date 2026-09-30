@@ -12,24 +12,30 @@ export interface NetworkStation {
   lat: number;
   lon: number;
   accessible: boolean;
-  /** Every network line serving this station, in NETWORK_LINES order. */
+  /** Every requested line serving this station, in request order. */
   lines: string[];
 }
 
-async function fetchAll(): Promise<{ lineId: string; stops: StopListItem[] }[]> {
-  return Promise.all(NETWORK_LINES.map(async lineId => {
+async function fetchLines(lineIds: readonly string[]): Promise<{ lineId: string; stops: StopListItem[] }[]> {
+  return Promise.all(lineIds.map(async lineId => {
     const r = await fetch(`/api/mbta/stops?route=${lineId}&format=list`);
     if (!r.ok) throw new Error(`${r.status}`);
     return { lineId, stops: (await r.json()) as StopListItem[] };
   }));
 }
 
-/** Every subway station, deduplicated across lines (Park St is Red + Green). */
-export function useNetworkStops(): { stations: NetworkStation[]; isLoading: boolean } {
-  const { data, isLoading } = useSWR("network-stops", fetchAll, {
-    revalidateOnFocus: false,
-    dedupingInterval: 300_000,
-  });
+const NO_LINES: readonly string[] = [];
+
+/**
+ * Stations served by any of `lineIds`, deduplicated across lines (Park St is
+ * Red + Green); each lists every requested line that serves it.
+ */
+export function useStations(lineIds: readonly string[] = NO_LINES): { stations: NetworkStation[]; isLoading: boolean } {
+  const { data, isLoading } = useSWR(
+    lineIds.length ? ["stations", ...lineIds] : null,
+    ([, ...ids]: string[]) => fetchLines(ids),
+    { revalidateOnFocus: false, dedupingInterval: 300_000 }
+  );
   const stations = useMemo(() => {
     const byId = new Map<string, NetworkStation>();
     for (const { lineId, stops } of data ?? []) {
@@ -47,6 +53,11 @@ export function useNetworkStops(): { stations: NetworkStation[]; isLoading: bool
     return [...byId.values()];
   }, [data]);
   return { stations, isLoading };
+}
+
+/** Every subway station — the searchable network. */
+export function useNetworkStops() {
+  return useStations(NETWORK_LINES);
 }
 
 export function lineColor(lineId: string): string {

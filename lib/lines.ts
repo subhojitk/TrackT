@@ -310,12 +310,41 @@ export const LINES_BY_MODE: Record<Mode, Line[]> = {
   ferry: LINES.filter(l => l.mode === "ferry"),
 };
 
+// Picker lines first so "Green-B" maps to the Green Line, not its branch entry
+const LINE_BY_ROUTE = new Map<string, Line>();
+for (const l of [...Object.values(LINES_BY_MODE).flat(), ...LINES]) {
+  for (const r of l.routes) if (!LINE_BY_ROUTE.has(r)) LINE_BY_ROUTE.set(r, l);
+}
+
 export function getLine(id: string): Line | undefined {
   return LINES.find(l => l.id === id);
 }
 
 export function getRouteIdsForLine(id: string): string[] {
   return getLine(id)?.routes ?? [id];
+}
+
+export function isMode(v: string | null | undefined): v is Mode {
+  return !!v && (MODE_ORDER as readonly string[]).includes(v);
+}
+
+/**
+ * MBTA route ids behind a map data key: a line id ("Red"), a whole mode
+ * ("mode:bus"), or the legacy "overview" (= every subway route).
+ */
+export function routeIdsForKey(key: string): string[] {
+  const mode = key === "overview" ? "subway" : key.startsWith("mode:") ? key.slice(5) : null;
+  if (mode !== null) {
+    if (!isMode(mode)) return [];
+    return LINES_BY_MODE[mode].flatMap(l => l.routes);
+  }
+  return getRouteIdsForLine(key);
+}
+
+/** The picker-level line an MBTA route (or "~n" branch shape key) belongs to. */
+export function lineForRoute(route: string): Line | undefined {
+  const base = route.split("~")[0];
+  return LINE_BY_ROUTE.get(base);
 }
 
 export function inferLineId(mbtaRouteId: string): string {

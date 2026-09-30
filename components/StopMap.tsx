@@ -5,23 +5,27 @@ import { useRouter } from "next/navigation";
 import { useVehicles } from "@/hooks/useVehicles";
 import { useShapes } from "@/hooks/useShapes";
 import { useStopPositions } from "@/hooks/useStopPositions";
-import { useNetworkStops, lineColor, NETWORK_LINES } from "@/hooks/useNetworkStops";
-import { getLine, GREEN_BRANCH_IDS, inferLineId } from "@/lib/lines";
+import { useStations, lineColor, NETWORK_LINES } from "@/hooks/useNetworkStops";
+import { getLine, GREEN_BRANCH_IDS, LINES_BY_MODE, lineForRoute, MODE_ORDER, type Mode } from "@/lib/lines";
+import { MODE_COLORS } from "./ModePicker";
 import { getPadding, setEngine, setOrigin, subscribePadding } from "@/lib/mapBus";
 import { isRouteHidden, useGreenBranches, useGreenStopFilter } from "@/lib/greenBranches";
-import { MapEngine, type FollowInfo, type HoverInfo, type StopDatum } from "./map3d/engine";
+import { MapEngine, type FollowInfo, type HoverInfo, type RouteStyle, type StopDatum } from "./map3d/engine";
 import { TILE_ATTRIBUTION } from "./map3d/tiles";
 import { Crosshair, Minus, Plus } from "./icons";
 import { Spinner } from "./ui";
 
-/** Shape keys may carry a "~n" branch suffix (Red~1 is the Ashmont branch). */
-function overviewColor(routeId: string): string {
-  return lineColor(inferLineId(routeId.split("~")[0]));
+/** Line color for an MBTA route or shape key ("Red~1" is the Ashmont branch). */
+function routeColor(route: string): string {
+  return lineForRoute(route)?.color ?? "#8b8b94";
 }
 
 interface Props {
   currentStopId?: string;
-  lineId?: string; // undefined or "overview" = all-subway overview
+  /** A single line; takes precedence over `mode`. */
+  lineId?: string;
+  /** A whole mode's network; with neither, the home view dims every mode. */
+  mode?: Mode;
 }
 
 function ControlButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
@@ -49,7 +53,7 @@ function useClock() {
   return time;
 }
 
-export default function StopMap({ currentStopId, lineId }: Props) {
+export default function StopMap({ currentStopId, lineId, mode }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MapEngine | null>(null);
   const router = useRouter();
@@ -77,30 +81,76 @@ export default function StopMap({ currentStopId, lineId }: Props) {
   // The live chip sits left of any right-docked window; drop it when it would hit the search bar
   const chipFits = width - pad.right > 760;
 
-  const isOverview = !lineId || lineId === "overview";
-  const dataKey = isOverview ? "overview" : lineId;
+  // Three views: home (every mode, dimmed), a mode (only its network), or a
+  // single line (just that line)
+  const kind = lineId ? "line" : mode ? "mode" : "home";
+  const viewKey = kind === "line" ? lineId! : kind === "mode" ? `mode:${mode}` : "home";
+  const network = kind !== "line";
 
-  const { vehicles: allVehicles } = useVehicles(dataKey, 10_000);
-  const { shapes: allShapes, isError: shapesError } = useShapes(dataKey);
-  const stopPositions = useStopPositions(isOverview ? undefined : lineId);
-  const { stations } = useNetworkStops();
+  const subwayNet = useShapes(network ? "mode:subway" : null);
+  const crNet = useShapes(network ? "mode:commuter_rail" : null);
+  const busNet = useShapes(network ? "mode:bus" : null);
+  const ferryNet = useShapes(network ? "mode:ferry" : null);
+  const lineNet = useShapes(kind === "line" ? lineId! : null);
+
+  const { vehicles: allVehicles } = useVehicles(kind === "home" ? null : kind === "mode" ? `mode:${mode}` : lineId!, 10_000);
+  const stopPositions = useStopPositions(kind === "line" ? lineId : undefined);
+  const stationLines = useMemo<readonly string[]>(() => {
+    if (kind !== "mode" || !mode || mode === "bus") return []; // too many bus stops to draw
+    return mode === "subway" ? NETWORK_LINES : LINES_BY_MODE[mode].map(l => l.id);
+  }, [kind, mode]);
+  const { stations } = useStations(stationLines);
 
   // Green Line branch toggles hide a branch's track, trains and branch-only stations
   const greenBranches = useGreenBranches();
-  const filtersGreen = isOverview || lineId === "Green";
+  const filtersGreen = kind !== "line" || lineId === "Green";
   const onVisibleGreen = useGreenStopFilter(filtersGreen ? greenBranches : GREEN_BRANCH_IDS);
-  const shapes = useMemo(() => {
-    if (!filtersGreen) return allShapes;
-    return Object.fromEntries(Object.entries(allShapes).filter(([key]) => !isRouteHidden(key, greenBranches)));
-  }, [allShapes, filtersGreen, greenBranches]);
+
+  const line = lineId ? getLine(lineId) : null;
+  const color = line?.color ?? "#22c55e";
+
+  const subwayShapes = subwayNet.shapes, crShapes = crNet.shapes, busShapes = busNet.shapes, ferryShapes = ferryNet.shapes;
+  const oneLineShapes = lineNet.shapes;
+  const { shapes, styles } = useMemo(() => {
+    const shapes: Record<string, [number, number][]> = {};
+    const styles: Record<string, RouteStyle> = {};
+    const add = (src: Record<string, [number, number][]>, style: (key: string) => RouteStyle) => {
+      for (const [key, pts] of Object.entries(src)) {
+        if (filtersGreen && isRouteHidden(key, greenBranches)) continue;
+        shapes[key] = pts;
+        styles[key] = style(key);
+      }
+    };
+    if (kind === "line") {
+      add(oneLineShapes, () => ({ color }));
+    } else {
+      const byMode: Record<Mode, Record<string, [number, number][]>> = {
+        subway: subwayShapes, commuter_rail: crShapes, bus: busShapes, ferry: ferryShapes,
+      };
+      // home dims every mode; a mode view draws only that mode's network
+      for (const m of kind === "home" ? MODE_ORDER : [mode!]) {
+        add(byMode[m], key => ({ color: routeColor(key), dim: kind === "home" }));
+      }
+    }
+    return { shapes, styles };
+  }, [kind, mode, color, filtersGreen, greenBranches, oneLineShapes, subwayShapes, crShapes, busShapes, ferryShapes]);
+
+  // Frame the camera only once everything that should be framed has arrived
+  const nets: Record<Mode, { isLoaded: boolean; isError: boolean }> = {
+    subway: subwayNet, commuter_rail: crNet, bus: busNet, ferry: ferryNet,
+  };
+  const fitReady = kind === "line"
+    ? lineNet.isLoaded
+    : kind === "mode"
+      ? nets[mode!].isLoaded
+      : MODE_ORDER.every(m => nets[m].isLoaded);
+  const ready = Object.keys(shapes).length > 0;
+  const shapesError = kind === "line" ? lineNet.isError : MODE_ORDER.every(m => nets[m].isError);
+
   const vehicles = useMemo(
     () => (filtersGreen ? allVehicles.filter(v => !isRouteHidden(v.route, greenBranches)) : allVehicles),
     [allVehicles, filtersGreen, greenBranches]
   );
-
-  const line = lineId ? getLine(lineId) : null;
-  const color = line?.color ?? "#22c55e";
-  const ready = Object.keys(allShapes).length > 0;
 
   // Mount the engine once
   useEffect(() => {
@@ -109,7 +159,7 @@ export default function StopMap({ currentStopId, lineId }: Props) {
     const engine = new MapEngine(container, {
       onStopClick: (stop, x, y) => {
         const lid = stop.lineId ?? lineIdRef.current;
-        if (!lid || lid === "overview") return;
+        if (!lid) return;
         setOrigin(x, y);
         engine.flyTo(stop.lat, stop.lon, 110);
         routerRef.current.push(`/stop/${lid}/${stop.id}`);
@@ -130,36 +180,34 @@ export default function StopMap({ currentStopId, lineId }: Props) {
     };
   }, []);
 
-  // Route shapes → bold lines + animation tracks; refit camera per line change
+  // Route shapes → bold lines + animation tracks; refit the camera once per view
   const fittedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !ready) return;
-    const colors: Record<string, string> = {};
-    for (const key of Object.keys(shapes)) {
-      colors[key] = isOverview ? overviewColor(key) : color;
-    }
-    const fit = fittedKeyRef.current !== dataKey && !currentStopId;
-    fittedKeyRef.current = dataKey ?? null;
-    engine.setShapes(shapes, colors, fit);
-  }, [shapes, ready, color, isOverview, dataKey, currentStopId]);
+    const fit = fitReady && fittedKeyRef.current !== viewKey && !currentStopId;
+    if (fit || currentStopId) fittedKeyRef.current = viewKey;
+    engine.setShapes(shapes, styles, fit);
+  }, [shapes, styles, ready, fitReady, viewKey, currentStopId]);
 
-  // Stations: every subway station in overview, the line's stops otherwise
+  // Stations: the active mode's stations, the line's stops, or none on home
   const stopData = useMemo<StopDatum[]>(() => {
-    if (isOverview) {
+    if (kind === "mode") {
       return stations
         .filter(s => !onVisibleGreen || s.lines.some(l => l !== "Green") || onVisibleGreen(s.lat, s.lon))
         .map(s => ({
-        id: s.id, lat: s.lat, lon: s.lon, name: s.name,
-        lineId: s.lines[0],
-        color: lineColor(s.lines[0]),
-        transfer: s.lines.length > 1,
-      }));
+          id: s.id, lat: s.lat, lon: s.lon, name: s.name,
+          lineId: s.lines[0],
+          color: lineColor(s.lines[0]),
+          // an interchange only reads as one when the lines differ in color (not CR ↔ CR)
+          transfer: new Set(s.lines.map(lineColor)).size > 1,
+        }));
     }
+    if (kind === "home") return [];
     return Object.entries(stopPositions)
       .filter(([, p]) => p.isStation && (lineId !== "Green" || !onVisibleGreen || onVisibleGreen(p.lat, p.lon)))
       .map(([id, p]) => ({ id, lat: p.lat, lon: p.lon, name: p.name }));
-  }, [isOverview, stations, stopPositions, lineId, onVisibleGreen]);
+  }, [kind, stations, stopPositions, lineId, onVisibleGreen]);
 
   useEffect(() => {
     engineRef.current?.setStops(stopData, color, currentStopId);
@@ -168,23 +216,24 @@ export default function StopMap({ currentStopId, lineId }: Props) {
   // Fly to the selected stop
   useEffect(() => {
     const engine = engineRef.current;
-    if (!engine || !currentStopId || isOverview) return;
+    if (!engine || !currentStopId) return;
     const pos = stopPositions[currentStopId];
     if (!pos) return;
     engine.flyTo(pos.lat, pos.lon, 110);
-  }, [currentStopId, stopPositions, isOverview]);
+  }, [currentStopId, stopPositions]);
 
   // Live vehicles → animated trains
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    engine.setVehicles(vehicles, isOverview ? overviewColor : () => color);
-  }, [vehicles, color, isOverview]);
+    engine.setVehicles(vehicles, kind === "line" ? () => color : routeColor);
+  }, [vehicles, color, kind]);
 
-  const noun = line?.mode === "bus" ? "bus" : line?.mode === "ferry" ? "boat" : "train";
+  const liveMode = line?.mode ?? mode;
+  const noun = liveMode === "bus" ? "bus" : liveMode === "ferry" ? "boat" : "train";
   const plural = vehicles.length === 1 ? noun : noun === "bus" ? "buses" : `${noun}s`;
-  const liveLabel = isOverview ? `${vehicles.length} trains live` : `${vehicles.length} ${plural} live`;
-  const liveColor = isOverview ? "#22c55e" : color;
+  const liveLabel = kind === "home" ? "Every MBTA line" : `${vehicles.length} ${plural} live`;
+  const liveColor = kind === "line" ? color : kind === "mode" ? MODE_COLORS[mode!].bg : "#1d2433";
 
   return (
     <div className="absolute inset-0 overflow-hidden select-none sky-bg">
@@ -232,8 +281,8 @@ export default function StopMap({ currentStopId, lineId }: Props) {
         {clock && <span className="text-[13px] font-semibold text-ink-3 num pl-2 border-l border-black/10" suppressHydrationWarning>{clock}</span>}
       </div>
 
-      {/* Legend (overview only) */}
-      {isOverview && (
+      {/* Legend (subway view only) */}
+      {kind === "mode" && mode === "subway" && (
         <div
           className="absolute top-[4.25rem] hidden lg:flex flex-col gap-1.5 px-3.5 py-3 rounded-2xl hud-panel pointer-events-none transition-[right] duration-500 ease-out"
           style={{ right: 16 + pad.right }}

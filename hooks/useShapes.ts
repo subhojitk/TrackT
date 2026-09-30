@@ -6,11 +6,14 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useShapes(lineId = "Green") {
+const EMPTY: Record<string, [number, number][]> = {};
+
+/** Route shapes for a map data key (line id or "mode:<mode>"); null skips fetching. */
+export function useShapes(key: string | null = "Green") {
   const { data, error } = useSWR<Record<string, [number, number][]>>(
-    `/api/mbta/shapes?route=${lineId}`,
+    key ? `/api/mbta/shapes?route=${encodeURIComponent(key)}` : null,
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 300_000 }
   );
-  return { shapes: data ?? {}, isError: !!error };
+  return { shapes: data ?? EMPTY, isLoaded: !!data || !key, isError: !!error };
 }

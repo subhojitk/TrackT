@@ -7,11 +7,14 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useVehicles(lineId = "Green", refreshInterval = 10_000) {
+const EMPTY: Vehicle[] = [];
+
+/** Live vehicles for a map data key (line id or "mode:<mode>"); null shows none. */
+export function useVehicles(key: string | null = "Green", refreshInterval = 10_000) {
   const { data, error, isLoading } = useSWR<Vehicle[]>(
-    `/api/mbta/vehicles?route=${lineId}`,
+    key ? `/api/mbta/vehicles?route=${encodeURIComponent(key)}` : null,
     fetcher,
     { refreshInterval, dedupingInterval: 8_000, revalidateOnFocus: false }
   );
-  return { vehicles: data ?? [], isLoading, isError: !!error };
+  return { vehicles: data ?? EMPTY, isLoading, isError: !!error };
 }
