@@ -294,8 +294,17 @@ export const LINES: Line[] = [
   },
 ];
 
+/** Green Line branches. Still routable lines, but picked via the Green Line's branch toggles. */
+export const GREEN_BRANCH_IDS = ["Green-B", "Green-C", "Green-D", "Green-E"] as const;
+export type GreenBranchId = (typeof GREEN_BRANCH_IDS)[number];
+
+export function isGreenBranch(id: string): id is GreenBranchId {
+  return (GREEN_BRANCH_IDS as readonly string[]).includes(id);
+}
+
+/** Lines offered in pickers and search (Green branches fold into the Green Line). */
 export const LINES_BY_MODE: Record<Mode, Line[]> = {
-  subway: LINES.filter(l => l.mode === "subway"),
+  subway: LINES.filter(l => l.mode === "subway" && !isGreenBranch(l.id)),
   commuter_rail: LINES.filter(l => l.mode === "commuter_rail"),
   bus: LINES.filter(l => l.mode === "bus"),
   ferry: LINES.filter(l => l.mode === "ferry"),

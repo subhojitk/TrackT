@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNetworkStops } from "@/hooks/useNetworkStops";
-import { getLine, LINES, MODE_LABELS, type Line } from "@/lib/lines";
+import { getLine, isGreenBranch, LINES, MODE_LABELS, type Line } from "@/lib/lines";
 import { getEngine, setOrigin } from "@/lib/mapBus";
 import { Accessible, MapPin, Search, X } from "./icons";
 import { LineBadge } from "./ui";
@@ -52,6 +52,7 @@ function SearchBox() {
     const q = normalize(query.trim());
     if (!q) return [];
     const lines = LINES
+      .filter(line => !isGreenBranch(line.id))
       .map(line => ({ line, s: Math.min(...[line.name, line.shortName, line.id].map(n => score(n, q)).map(v => (v < 0 ? 99 : v))) }))
       .filter(x => x.s < 99)
       .sort((a, b) => a.s - b.s)

@@ -50,7 +50,7 @@ export default function ModePicker() {
       })}
       <div className="col-span-2 flex items-center gap-1.5 flex-wrap mt-1 px-1">
         <span className="text-[12px] font-semibold text-ink-3 mr-1">Jump to</span>
-        {LINES_BY_MODE.subway.filter(l => !l.id.startsWith("Green-")).map(line => (
+        {LINES_BY_MODE.subway.map(line => (
           <Link key={line.id} href={`/?mode=subway&line=${line.id}`} className="btn-pop rounded-md focus-ring">
             <LineBadge line={line} size="md" />
           </Link>

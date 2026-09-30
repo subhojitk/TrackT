@@ -8,6 +8,8 @@ import { getLine } from "@/lib/lines";
 import { Accessible, ChevronRight, Search } from "./icons";
 import { EmptyState, Skeleton } from "./ui";
 import { getEngine, originFromEvent } from "@/lib/mapBus";
+import { useGreenBranches, useGreenStopFilter } from "@/lib/greenBranches";
+import GreenBranchToggles from "./GreenBranchToggles";
 
 const fetcher = (url: string) =>
   fetch(url).then(r => {
@@ -22,6 +24,9 @@ interface Props {
 export default function StopPicker({ lineId }: Props) {
   const [query, setQuery] = useState("");
   const line = getLine(lineId);
+  const isGreen = lineId === "Green";
+  const branches = useGreenBranches();
+  const onVisibleGreen = useGreenStopFilter(branches);
 
   const { data: stops, isLoading, error } = useSWR<StopListItem[]>(
     `/api/mbta/stops?route=${lineId}&format=list`,
@@ -35,16 +40,18 @@ export default function StopPicker({ lineId }: Props) {
     return (stops ?? []).filter(s => {
       const isStation = s.locationType === 1 || (s.locationType === 0 && !s.parentStationId);
       if (!isStation || seen.has(s.id)) return false;
+      if (isGreen && onVisibleGreen && !onVisibleGreen(s.lat, s.lon)) return false; // on a hidden branch
       seen.add(s.id);
       return true;
     });
-  }, [stops]);
+  }, [stops, isGreen, onVisibleGreen]);
 
   const q = query.trim().toLowerCase();
   const filtered = q ? stations.filter(s => s.name.toLowerCase().includes(q)) : stations;
 
   return (
     <div>
+      {isGreen && <GreenBranchToggles className="mb-3" />}
       <label className="relative block mb-3">
         <span className="sr-only">Search stops</span>
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-3 pointer-events-none" />

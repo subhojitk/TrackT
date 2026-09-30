@@ -6,8 +6,9 @@ import { useVehicles } from "@/hooks/useVehicles";
 import { useShapes } from "@/hooks/useShapes";
 import { useStopPositions } from "@/hooks/useStopPositions";
 import { useNetworkStops, lineColor, NETWORK_LINES } from "@/hooks/useNetworkStops";
-import { getLine, inferLineId } from "@/lib/lines";
+import { getLine, GREEN_BRANCH_IDS, inferLineId } from "@/lib/lines";
 import { getPadding, setEngine, setOrigin, subscribePadding } from "@/lib/mapBus";
+import { isRouteHidden, useGreenBranches, useGreenStopFilter } from "@/lib/greenBranches";
 import { MapEngine, type FollowInfo, type HoverInfo, type StopDatum } from "./map3d/engine";
 import { TILE_ATTRIBUTION } from "./map3d/tiles";
 import { Crosshair, Minus, Plus } from "./icons";
@@ -79,14 +80,27 @@ export default function StopMap({ currentStopId, lineId }: Props) {
   const isOverview = !lineId || lineId === "overview";
   const dataKey = isOverview ? "overview" : lineId;
 
-  const { vehicles } = useVehicles(dataKey, 10_000);
-  const { shapes, isError: shapesError } = useShapes(dataKey);
+  const { vehicles: allVehicles } = useVehicles(dataKey, 10_000);
+  const { shapes: allShapes, isError: shapesError } = useShapes(dataKey);
   const stopPositions = useStopPositions(isOverview ? undefined : lineId);
   const { stations } = useNetworkStops();
 
+  // Green Line branch toggles hide a branch's track, trains and branch-only stations
+  const greenBranches = useGreenBranches();
+  const filtersGreen = isOverview || lineId === "Green";
+  const onVisibleGreen = useGreenStopFilter(filtersGreen ? greenBranches : GREEN_BRANCH_IDS);
+  const shapes = useMemo(() => {
+    if (!filtersGreen) return allShapes;
+    return Object.fromEntries(Object.entries(allShapes).filter(([key]) => !isRouteHidden(key, greenBranches)));
+  }, [allShapes, filtersGreen, greenBranches]);
+  const vehicles = useMemo(
+    () => (filtersGreen ? allVehicles.filter(v => !isRouteHidden(v.route, greenBranches)) : allVehicles),
+    [allVehicles, filtersGreen, greenBranches]
+  );
+
   const line = lineId ? getLine(lineId) : null;
   const color = line?.color ?? "#22c55e";
-  const ready = Object.keys(shapes).length > 0;
+  const ready = Object.keys(allShapes).length > 0;
 
   // Mount the engine once
   useEffect(() => {
@@ -133,7 +147,9 @@ export default function StopMap({ currentStopId, lineId }: Props) {
   // Stations: every subway station in overview, the line's stops otherwise
   const stopData = useMemo<StopDatum[]>(() => {
     if (isOverview) {
-      return stations.map(s => ({
+      return stations
+        .filter(s => !onVisibleGreen || s.lines.some(l => l !== "Green") || onVisibleGreen(s.lat, s.lon))
+        .map(s => ({
         id: s.id, lat: s.lat, lon: s.lon, name: s.name,
         lineId: s.lines[0],
         color: lineColor(s.lines[0]),
@@ -141,9 +157,9 @@ export default function StopMap({ currentStopId, lineId }: Props) {
       }));
     }
     return Object.entries(stopPositions)
-      .filter(([, p]) => p.isStation)
+      .filter(([, p]) => p.isStation && (lineId !== "Green" || !onVisibleGreen || onVisibleGreen(p.lat, p.lon)))
       .map(([id, p]) => ({ id, lat: p.lat, lon: p.lon, name: p.name }));
-  }, [isOverview, stations, stopPositions]);
+  }, [isOverview, stations, stopPositions, lineId, onVisibleGreen]);
 
   useEffect(() => {
     engineRef.current?.setStops(stopData, color, currentStopId);
